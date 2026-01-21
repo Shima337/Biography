@@ -4,27 +4,32 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
-venv/
 env/
+venv/
 ENV/
 .venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+out/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+.env*.local
 
 # IDE
 .vscode/
@@ -33,19 +38,13 @@ ENV/
 *.swo
 *~
 
-# Environment variables
-.env
-.env.local
-
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Database
+*.db
+*.sqlite
 
-# AI/ML models (если будут большие файлы)
-*.pkl
-*.h5
-*.pt
-models/
+# Docker
+docker-compose.override.yml
