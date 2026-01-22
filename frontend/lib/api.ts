@@ -77,6 +77,13 @@ export interface Session {
   created_at: string
 }
 
+export interface User {
+  id: number
+  name: string
+  locale: string
+  created_at: string
+}
+
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
@@ -94,6 +101,21 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 }
 
 export const api = {
+  // Users
+  getUsers: () => fetchAPI<User[]>('/api/users'),
+  getUser: (id: number) => fetchAPI<User>(`/api/users/${id}`),
+  createUser: (name?: string) => {
+    const body = name ? JSON.stringify({ name }) : JSON.stringify({});
+    return fetchAPI<User>('/api/users', {
+      method: 'POST',
+      body,
+    });
+  },
+  deleteUser: (id: number) =>
+    fetchAPI(`/api/users/${id}`, {
+      method: 'DELETE',
+    }),
+
   // Sessions
   getSessions: () => fetchAPI<Session[]>('/api/sessions'),
   getSession: (id: number) => fetchAPI<Session>(`/api/sessions/${id}`),

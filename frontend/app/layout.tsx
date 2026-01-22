@@ -1,5 +1,6 @@
 import './globals.css'
 import Link from 'next/link'
+import UserSelector from './components/UserSelector'
 
 export const metadata = {
   title: 'LifeBook Lab Console',
@@ -56,6 +57,7 @@ export default function RootLayout({
             </ul>
           </nav>
           <main style={{ flex: 1, padding: '20px' }}>
+            <UserSelector />
             {children}
           </main>
         </div>

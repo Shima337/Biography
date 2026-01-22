@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.routers import sessions, memories, persons, chapters, prompt_runs, questions
+from app.routers import sessions, memories, persons, chapters, prompt_runs, questions, users
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -20,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(memories.router, prefix="/api/memories", tags=["memories"])
 app.include_router(persons.router, prefix="/api/persons", tags=["persons"])
