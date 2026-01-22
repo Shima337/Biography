@@ -54,6 +54,7 @@ class OpenAIProvider(LLMProvider):
                 response_format={"type": "json_object"},
                 temperature=0.3,
                 timeout=120.0,  # 120 секунд таймаут для длинных запросов
+                max_tokens=4000,  # Ограничение выходных токенов для предотвращения превышения лимитов
             )
             
             latency_ms = int((time.time() - start_time) * 1000)
@@ -93,6 +94,7 @@ class OpenAIProvider(LLMProvider):
                 response_format={"type": "json_object"},
                 temperature=0.5,
                 timeout=120.0,  # 120 секунд таймаут для длинных запросов
+                max_tokens=2000,  # Ограничение выходных токенов для planner (меньше, так как генерирует только вопросы)
             )
             
             latency_ms = int((time.time() - start_time) * 1000)

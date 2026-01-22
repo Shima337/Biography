@@ -76,12 +76,25 @@ async def create_message(
     db: Session = Depends(get_db)
 ):
     """Process a new message through the AI pipeline"""
-    session = db.query(DBSession).filter(DBSession.id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    service = ProcessingService(db)
-    result = await service.process_message(
-        session_id, message.text, extractor_version, planner_version
-    )
-    return result
+    try:
+        session = db.query(DBSession).filter(DBSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        service = ProcessingService(db)
+        result = await service.process_message(
+            session_id, message.text, extractor_version, planner_version
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Логировать ошибку для отладки
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error processing message: {e}")
+        print(error_details)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing message: {str(e)}"
+        )

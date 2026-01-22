@@ -72,28 +72,32 @@ class ProcessingService:
         }
 
     def _build_extractor_context(self, user_id: int, session_id: int) -> Dict[str, Any]:
-        """Build context for extractor prompt"""
-        # Get recent messages from this session for context
+        """Build context for extractor prompt - ограниченный размер для предотвращения превышения лимитов токенов"""
+        # Get recent messages from this session for context (ограничить до 3)
         recent_messages = self.db.query(Message).filter(
             Message.session_id == session_id
-        ).order_by(desc(Message.created_at)).limit(5).all()
+        ).order_by(desc(Message.created_at)).limit(3).all()
         
-        # Get recent memories
+        # Get recent memories (ограничить до 3)
         recent_memories = self.db.query(Memory).filter(
             Memory.user_id == user_id
-        ).order_by(desc(Memory.created_at)).limit(10).all()
+        ).order_by(desc(Memory.created_at)).limit(3).all()
         
-        # Get existing persons
-        persons = self.db.query(Person).filter(Person.user_id == user_id).all()
+        # ОГРАНИЧИТЬ количество персон (последние 20)
+        persons = self.db.query(Person).filter(
+            Person.user_id == user_id
+        ).order_by(desc(Person.id)).limit(20).all()
         
-        # Get existing chapters
-        chapters = self.db.query(Chapter).filter(Chapter.user_id == user_id).all()
+        # ОГРАНИЧИТЬ количество глав (последние 15)
+        chapters = self.db.query(Chapter).filter(
+            Chapter.user_id == user_id
+        ).order_by(desc(Chapter.id)).limit(15).all()
         
         return {
             "session_id": session_id,
             "message_text": "",  # Will be filled in
             "message_history": [
-                {"role": m.role, "text": m.content_text}
+                {"role": m.role, "text": m.content_text[:500]}  # Ограничить длину сообщений до 500 символов
                 for m in reversed(recent_messages[:-1])  # All except the last (current) message
             ],
             "known_persons": [
@@ -105,8 +109,8 @@ class ProcessingService:
                 for c in chapters
             ],
             "recent_memories": [
-                {"summary": m.summary, "narrative": m.narrative[:200]}
-                for m in recent_memories[:5]
+                {"summary": m.summary, "narrative": m.narrative[:100]}  # Уменьшить до 100 символов
+                for m in recent_memories[:3]  # Уменьшить до 3
             ]
         }
 
@@ -118,7 +122,8 @@ class ProcessingService:
         version: str
     ) -> Dict[str, Any]:
         """Run extractor prompt and store results"""
-        context["message_text"] = message_text
+        # Ограничить длину message_text до 2000 символов для предотвращения превышения лимитов
+        context["message_text"] = message_text[:2000] if len(message_text) > 2000 else message_text
         prompt_text = get_prompt("extractor", version)
         
         output_text, parsed_json, token_in, token_out, latency_ms = \
@@ -356,23 +361,25 @@ class ProcessingService:
         context: Dict[str, Any],
         version: str
     ) -> Dict[str, Any]:
-        """Run planner prompt and store results"""
-        # Build planner context
+        """Run planner prompt and store results - ограниченный контекст"""
+        # Build planner context (ограничить размер)
         recent_memories = self.db.query(Memory).filter(
             Memory.user_id == user_id
-        ).order_by(desc(Memory.created_at)).limit(20).all()
+        ).order_by(desc(Memory.created_at)).limit(10).all()  # Было 20
         
-        chapters = self.db.query(Chapter).filter(Chapter.user_id == user_id).all()
+        chapters = self.db.query(Chapter).filter(
+            Chapter.user_id == user_id
+        ).order_by(desc(Chapter.id)).limit(15).all()  # Ограничить вместо .all()
         
         planner_context = {
             "recent_memories": [
                 {
                     "id": m.id,
                     "summary": m.summary,
-                    "narrative": m.narrative[:300],
+                    "narrative": m.narrative[:150],  # Было 300, уменьшить до 150
                     "importance": m.importance_score
                 }
-                for m in recent_memories
+                for m in recent_memories[:5]  # Ограничить до 5
             ],
             "chapters": [
                 {
