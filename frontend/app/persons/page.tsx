@@ -108,7 +108,7 @@ export default function PersonsPage() {
         </div>
         
         {selectedPerson && (
-          <div style={{ width: '400px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
+          <div style={{ width: '500px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3>Person Detail</h3>
             <div style={{ marginBottom: '10px' }}>
               <strong>Name:</strong> {selectedPerson.display_name}
@@ -123,13 +123,30 @@ export default function PersonsPage() {
             )}
             
             <h4>Related Memories ({personMemories.length})</h4>
-            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
               {personMemories.map(memory => (
-                <div key={memory.id} style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-                  <div><strong>{memory.summary}</strong></div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>
-                    {memory.narrative.substring(0, 100)}...
+                <div key={memory.id} style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>{memory.summary}</strong>
                   </div>
+                  <div style={{ fontSize: '14px', color: '#333', whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+                    {memory.narrative}
+                  </div>
+                  {memory.time_text && (
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                      <strong>Time:</strong> {memory.time_text}
+                    </div>
+                  )}
+                  {memory.location_text && (
+                    <div style={{ fontSize: '12px', color: '#666' }}>
+                      <strong>Location:</strong> {memory.location_text}
+                    </div>
+                  )}
+                  {memory.topics && memory.topics.length > 0 && (
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                      <strong>Topics:</strong> {memory.topics.join(', ')}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
