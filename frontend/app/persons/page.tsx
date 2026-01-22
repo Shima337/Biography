@@ -40,23 +40,18 @@ export default function PersonsPage() {
     try {
       const data = await api.getPersons(selectedUserId)
       setPersons(data)
-
-  useEffect(() => {
-    if (selectedPerson) {
-      loadPersonMemories(selectedPerson.id)
-    }
-  }, [selectedPerson])
-
-  const loadPersons = async () => {
-    try {
-      const data = await api.getPersons(userId)
-      setPersons(data)
     } catch (error) {
       console.error('Failed to load persons:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (selectedPerson) {
+      loadPersonMemories(selectedPerson.id)
+    }
+  }, [selectedPerson])
 
   const loadPersonMemories = async (personId: number) => {
     try {
