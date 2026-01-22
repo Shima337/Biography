@@ -139,14 +139,17 @@ class ProcessingService:
         except Exception as e:
             error_text = str(e)
         
-        # Store prompt run
+        # Store prompt run with full prompt text in input_json
+        input_data = context.copy()
+        input_data["system_prompt"] = prompt_text  # Сохранить полный system prompt
+        
         run = PromptRun(
             session_id=context.get("session_id"),
             message_id=message_id,
             prompt_name="extractor",
             prompt_version=version,
             model=self.model,
-            input_json=context,
+            input_json=input_data,
             output_text=output_text,
             output_json=parsed_json,
             parse_ok=parse_ok,
@@ -455,13 +458,17 @@ class ProcessingService:
         except Exception as e:
             error_text = str(e)
         
+        # Store prompt run with full prompt text in input_json
+        input_data = planner_context.copy()
+        input_data["system_prompt"] = prompt_text  # Сохранить полный system prompt
+        
         run = PromptRun(
             session_id=session_id,
             message_id=None,
             prompt_name="planner",
             prompt_version=version,
             model=self.model,
-            input_json=planner_context,
+            input_json=input_data,
             output_text=output_text,
             output_json=parsed_json,
             parse_ok=parse_ok,
