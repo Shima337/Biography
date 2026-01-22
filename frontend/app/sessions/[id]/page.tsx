@@ -11,7 +11,7 @@ export default function SessionDetailPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [promptRuns, setPromptRuns] = useState<PromptRun[]>([])
   const [newMessage, setNewMessage] = useState('')
-  const [extractorVersion, setExtractorVersion] = useState('v1')
+  const [extractorVersion, setExtractorVersion] = useState('v3')
   const [plannerVersion, setPlannerVersion] = useState('v1')
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
@@ -86,6 +86,7 @@ export default function SessionDetailPage() {
               <select value={extractorVersion} onChange={(e) => setExtractorVersion(e.target.value)} disabled={processing}>
                 <option value="v1">v1</option>
                 <option value="v2">v2</option>
+                <option value="v3">v3</option>
               </select>
             </label>
             <label style={{ marginLeft: '20px' }}>

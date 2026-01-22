@@ -105,7 +105,7 @@ export const api = {
     });
   },
   getSessionMessages: (sessionId: number) => fetchAPI<Message[]>(`/api/sessions/${sessionId}/messages`),
-  createMessage: (sessionId: number, text: string, extractorVersion = 'v1', plannerVersion = 'v1') =>
+  createMessage: (sessionId: number, text: string, extractorVersion = 'v3', plannerVersion = 'v1') =>
     fetchAPI(`/api/sessions/${sessionId}/messages?extractor_version=${extractorVersion}&planner_version=${plannerVersion}`, {
       method: 'POST',
       body: JSON.stringify({ text }),
