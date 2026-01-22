@@ -109,7 +109,7 @@ class ProcessingService:
                 for c in chapters
             ],
             "recent_memories": [
-                {"summary": m.summary, "narrative": m.narrative[:100]}  # Уменьшить до 100 символов
+                {"summary": m.summary}  # Убрали narrative - он засоряет контекст, summary достаточно
                 for m in recent_memories[:3]  # Уменьшить до 3
             ]
         }
