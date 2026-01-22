@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from datetime import datetime
 from app.database import get_db
 from app.models import User
 from app.schemas import SessionResponse
@@ -16,7 +17,7 @@ class UserResponse(BaseModel):
     id: int
     name: str
     locale: str
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
