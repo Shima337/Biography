@@ -162,9 +162,10 @@ export const api = {
   getChapterCoverage: (id: number) => fetchAPI(`/api/chapters/${id}/coverage`),
 
   // Prompt Runs
-  getPromptRuns: (params?: { session_id?: number; prompt_name?: string; parse_ok?: boolean; model?: string }) => {
+  getPromptRuns: (params?: { session_id?: number; user_id?: number; prompt_name?: string; parse_ok?: boolean; model?: string }) => {
     const query = new URLSearchParams()
     if (params?.session_id) query.append('session_id', params.session_id.toString())
+    if (params?.user_id) query.append('user_id', params.user_id.toString())
     if (params?.prompt_name) query.append('prompt_name', params.prompt_name)
     if (params?.parse_ok !== undefined) query.append('parse_ok', params.parse_ok.toString())
     if (params?.model) query.append('model', params.model)

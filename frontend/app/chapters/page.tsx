@@ -9,11 +9,31 @@ export default function ChaptersPage() {
   const [chapterMemories, setChapterMemories] = useState<Memory[]>([])
   const [coverage, setCoverage] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const userId = 1 // TODO: Get from context or props
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
 
   useEffect(() => {
-    loadChapters()
+    loadSelectedUser()
   }, [])
+
+  useEffect(() => {
+    if (selectedUserId) {
+      loadChapters()
+    }
+  }, [selectedUserId])
+
+  const loadSelectedUser = () => {
+    const saved = localStorage.getItem('selectedUserId')
+    if (saved) {
+      setSelectedUserId(parseInt(saved))
+    }
+  }
+
+  const loadChapters = async () => {
+    if (!selectedUserId) return
+    
+    try {
+      const data = await api.getChapters(selectedUserId)
+      setChapters(data)
 
   useEffect(() => {
     if (selectedChapter) {
@@ -47,9 +67,23 @@ export default function ChaptersPage() {
 
   if (loading) return <div>Loading...</div>
 
+  if (!selectedUserId) {
+    return (
+      <div>
+        <h1>Chapters (Outline)</h1>
+        <div style={{ padding: '20px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px' }}>
+          Please select a user to view chapters
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <h1>Chapters (Outline)</h1>
+      <div style={{ marginBottom: '15px', color: '#666' }}>
+        Showing chapters for User ID: <strong>{selectedUserId}</strong>
+      </div>
       <div style={{ display: 'flex', gap: '20px' }}>
         <div style={{ flex: 1 }}>
           <table>

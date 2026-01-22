@@ -8,11 +8,31 @@ export default function PersonsPage() {
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null)
   const [personMemories, setPersonMemories] = useState<Memory[]>([])
   const [loading, setLoading] = useState(true)
-  const userId = 1 // TODO: Get from context or props
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
 
   useEffect(() => {
-    loadPersons()
+    loadSelectedUser()
   }, [])
+
+  useEffect(() => {
+    if (selectedUserId) {
+      loadPersons()
+    }
+  }, [selectedUserId])
+
+  const loadSelectedUser = () => {
+    const saved = localStorage.getItem('selectedUserId')
+    if (saved) {
+      setSelectedUserId(parseInt(saved))
+    }
+  }
+
+  const loadPersons = async () => {
+    if (!selectedUserId) return
+    
+    try {
+      const data = await api.getPersons(selectedUserId)
+      setPersons(data)
 
   useEffect(() => {
     if (selectedPerson) {
@@ -42,9 +62,23 @@ export default function PersonsPage() {
 
   if (loading) return <div>Loading...</div>
 
+  if (!selectedUserId) {
+    return (
+      <div>
+        <h1>People</h1>
+        <div style={{ padding: '20px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px' }}>
+          Please select a user to view people
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <h1>People</h1>
+      <div style={{ marginBottom: '15px', color: '#666' }}>
+        Showing people for User ID: <strong>{selectedUserId}</strong>
+      </div>
       <div style={{ display: 'flex', gap: '20px' }}>
         <div style={{ flex: 1 }}>
           <table>

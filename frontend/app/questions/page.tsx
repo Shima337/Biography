@@ -7,14 +7,30 @@ export default function QuestionsPage() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
 
   useEffect(() => {
-    loadQuestions()
-  }, [statusFilter])
+    loadSelectedUser()
+  }, [])
+
+  useEffect(() => {
+    if (selectedUserId) {
+      loadQuestions()
+    }
+  }, [statusFilter, selectedUserId])
+
+  const loadSelectedUser = () => {
+    const saved = localStorage.getItem('selectedUserId')
+    if (saved) {
+      setSelectedUserId(parseInt(saved))
+    }
+  }
 
   const loadQuestions = async () => {
+    if (!selectedUserId) return
+    
     try {
-      const params: any = {}
+      const params: any = { user_id: selectedUserId }
       if (statusFilter) params.status = statusFilter
       const data = await api.getQuestions(params)
       setQuestions(data)
@@ -37,9 +53,23 @@ export default function QuestionsPage() {
 
   if (loading) return <div>Loading...</div>
 
+  if (!selectedUserId) {
+    return (
+      <div>
+        <h1>Next Questions</h1>
+        <div style={{ padding: '20px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px' }}>
+          Please select a user to view questions
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <h1>Next Questions</h1>
+      <div style={{ marginBottom: '15px', color: '#666' }}>
+        Showing questions for User ID: <strong>{selectedUserId}</strong>
+      </div>
       
       <div style={{ marginBottom: '20px' }}>
         <label>

@@ -7,6 +7,7 @@ export default function PromptRunsPage() {
   const [runs, setRuns] = useState<PromptRun[]>([])
   const [selectedRun, setSelectedRun] = useState<PromptRun | null>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
   const [filters, setFilters] = useState({
     prompt_name: '',
     parse_ok: null as boolean | null,
@@ -14,12 +15,27 @@ export default function PromptRunsPage() {
   })
 
   useEffect(() => {
-    loadRuns()
+    loadSelectedUser()
   }, [])
 
+  useEffect(() => {
+    if (selectedUserId) {
+      loadRuns()
+    }
+  }, [filters, selectedUserId])
+
+  const loadSelectedUser = () => {
+    const saved = localStorage.getItem('selectedUserId')
+    if (saved) {
+      setSelectedUserId(parseInt(saved))
+    }
+  }
+
   const loadRuns = async () => {
+    if (!selectedUserId) return
+    
     try {
-      const params: any = {}
+      const params: any = { user_id: selectedUserId }
       if (filters.prompt_name) params.prompt_name = filters.prompt_name
       if (filters.parse_ok !== null) params.parse_ok = filters.parse_ok
       if (filters.model) params.model = filters.model
@@ -33,15 +49,25 @@ export default function PromptRunsPage() {
     }
   }
 
-  useEffect(() => {
-    loadRuns()
-  }, [filters])
-
   if (loading) return <div>Loading...</div>
+
+  if (!selectedUserId) {
+    return (
+      <div>
+        <h1>Prompt Runs (Debug)</h1>
+        <div style={{ padding: '20px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px' }}>
+          Please select a user to view prompt runs
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div>
       <h1>Prompt Runs (Debug)</h1>
+      <div style={{ marginBottom: '15px', color: '#666' }}>
+        Showing prompt runs for User ID: <strong>{selectedUserId}</strong>
+      </div>
       
       <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
         <h3>Filters</h3>

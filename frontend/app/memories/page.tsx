@@ -7,14 +7,30 @@ export default function MemoriesPage() {
   const [memories, setMemories] = useState<Memory[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
 
   useEffect(() => {
-    loadMemories()
+    loadSelectedUser()
   }, [])
 
+  useEffect(() => {
+    if (selectedUserId) {
+      loadMemories()
+    }
+  }, [selectedUserId])
+
+  const loadSelectedUser = () => {
+    const saved = localStorage.getItem('selectedUserId')
+    if (saved) {
+      setSelectedUserId(parseInt(saved))
+    }
+  }
+
   const loadMemories = async () => {
+    if (!selectedUserId) return
+    
     try {
-      const data = await api.getMemories()
+      const data = await api.getMemories({ user_id: selectedUserId })
       setMemories(data)
     } catch (error) {
       console.error('Failed to load memories:', error)
@@ -25,9 +41,23 @@ export default function MemoriesPage() {
 
   if (loading) return <div>Loading...</div>
 
+  if (!selectedUserId) {
+    return (
+      <div>
+        <h1>Memory Inbox</h1>
+        <div style={{ padding: '20px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px' }}>
+          Please select a user to view memories
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <h1>Memory Inbox</h1>
+      <div style={{ marginBottom: '15px', color: '#666' }}>
+        Showing memories for User ID: <strong>{selectedUserId}</strong>
+      </div>
       <div style={{ display: 'flex', gap: '20px' }}>
         <div style={{ flex: 1 }}>
           <table>
