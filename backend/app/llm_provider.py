@@ -64,8 +64,7 @@ class OpenAIProvider(LLMProvider):
             
             try:
                 parsed_json = json.loads(output_text)
-                # Validate against schema
-                ExtractorOutput(**parsed_json)
+                # Validation will be done in service layer based on prompt type
             except Exception as e:
                 parsed_json = {"error": str(e)}
             

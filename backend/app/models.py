@@ -60,6 +60,7 @@ class Memory(Base):
     location_text = Column(String, nullable=True)
     topics = Column(ARRAY(String), default=[])
     importance_score = Column(Float, default=0.5)
+    pipeline_version = Column(String, default="v1")  # "v1" | "v2" - для различения подходов экстракции
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="memories")
@@ -77,6 +78,7 @@ class Person(Base):
     display_name = Column(String, nullable=False)
     type = Column(String, nullable=False)  # "family" | "friend" | "romance" | "colleague" | "other"
     first_seen_memory_id = Column(Integer, ForeignKey("memories.id"), nullable=True)
+    pipeline_version = Column(String, default="v1")  # "v1" | "v2" - для различения подходов экстракции
     notes = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="persons")
@@ -145,6 +147,7 @@ class PromptRun(Base):
     message_id = Column(Integer, ForeignKey("messages.id"), nullable=True)
     prompt_name = Column(String, nullable=False)  # "extractor" | "planner" | "writer"
     prompt_version = Column(String, nullable=False)
+    pipeline_version = Column(String, default="v1")  # "v1" | "v2" - для различения подходов экстракции
     model = Column(String, nullable=False)
     input_json = Column(JSON, nullable=True)
     output_text = Column(Text, nullable=True)

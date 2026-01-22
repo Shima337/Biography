@@ -2,11 +2,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List, Dict, Any
 import json
+import asyncio
 from app.models import (
     User, Session as DBSession, Message, Memory, Person, Chapter,
     MemoryPerson, MemoryChapter, QuestionQueue, PromptRun
 )
-from app.schemas import ExtractorOutput, PlannerOutput, ExtractorMemory, ExtractorPerson
+from app.schemas import ExtractorOutput, PlannerOutput, ExtractorMemory, ExtractorPerson, PersonExtractorOutput
 from app.llm_provider import get_llm_provider
 from app.prompts import get_prompt
 import os
@@ -25,7 +26,7 @@ class ProcessingService:
         extractor_version: str = "v3",
         planner_version: str = "v1"
     ) -> Dict[str, Any]:
-        """Main pipeline: process user message through extractor and planner"""
+        """Main pipeline: process user message through extractor and planner (parallel v1 and v2)"""
         
         # 1. Create message record
         message = Message(
@@ -36,23 +37,60 @@ class ProcessingService:
         self.db.add(message)
         self.db.flush()
         
-        # 2. Get context for extractor
+        # 2. Get context and session
         session = self.db.query(DBSession).filter(DBSession.id == session_id).first()
         if not session:
             raise ValueError(f"Session {session_id} not found")
         context = self._build_extractor_context(session.user_id, session_id)
         
-        # 3. Run extractor
-        extractor_result = await self._run_extractor(
-            message_text, context, message.id, extractor_version
+        # 3. Prepare message history for v2
+        message_history = context.get("message_history", [])
+        
+        # 4. Run BOTH pipelines in parallel
+        async def run_pipeline_v1():
+            """Pipeline v1: Current single-stage extractor"""
+            extractor_result = await self._run_extractor(
+                message_text, context, message.id, extractor_version
+            )
+            applied = self._apply_extractor_results(
+                session.user_id, session_id, message.id, extractor_result
+            )
+            return {
+                "extractor_result": extractor_result,
+                "applied": applied
+            }
+        
+        async def run_pipeline_v2():
+            """Pipeline v2: Two-stage (person_extractor → memory_extractor)"""
+            # Stage 1: Extract persons
+            person_result = await self._run_person_extractor_v2(
+                message_text, message_history, session_id, message.id
+            )
+            extracted_persons = self._apply_person_extractor_results_v2(
+                session.user_id, message.id, person_result
+            )
+            
+            # Stage 2: Extract memories using found persons
+            memory_result = await self._run_memory_extractor_v2(
+                message_text, extracted_persons, context, message.id
+            )
+            applied = self._apply_memory_extractor_results_v2(
+                session.user_id, session_id, message.id, memory_result, extracted_persons
+            )
+            
+            return {
+                "person_result": person_result,
+                "memory_result": memory_result,
+                "applied": applied
+            }
+        
+        # Run both pipelines in parallel
+        v1_result, v2_result = await asyncio.gather(
+            run_pipeline_v1(),
+            run_pipeline_v2()
         )
         
-        # 4. Apply extractor results
-        applied = self._apply_extractor_results(
-            session.user_id, session_id, message.id, extractor_result
-        )
-        
-        # 5. Run planner
+        # 5. Run planner (only once, using v1 context for now)
         planner_result = await self._run_planner(
             session.user_id, session_id, context, planner_version
         )
@@ -64,11 +102,20 @@ class ProcessingService:
         
         return {
             "message_id": message.id,
-            "extractor_run_id": extractor_result["run_id"],
-            "planner_run_id": planner_result["run_id"],
-            "memories_created": applied["memories"],
-            "persons_created": applied["persons"],
-            "chapters_created": applied["chapters"]
+            "v1": {
+                "extractor_run_id": v1_result["extractor_result"]["run_id"],
+                "memories_created": v1_result["applied"]["memories"],
+                "persons_created": v1_result["applied"]["persons"],
+                "chapters_created": v1_result["applied"]["chapters"]
+            },
+            "v2": {
+                "person_extractor_run_id": v2_result["person_result"]["run_id"],
+                "memory_extractor_run_id": v2_result["memory_result"]["run_id"],
+                "memories_created": v2_result["applied"]["memories"],
+                "persons_created": v2_result["applied"]["persons"],
+                "chapters_created": v2_result["applied"]["chapters"]
+            },
+            "planner_run_id": planner_result["run_id"]
         }
 
     def _build_extractor_context(self, user_id: int, session_id: int) -> Dict[str, Any]:
@@ -148,6 +195,7 @@ class ProcessingService:
             message_id=message_id,
             prompt_name="extractor",
             prompt_version=version,
+            pipeline_version="v1",
             model=self.model,
             input_json=input_data,
             output_text=output_text,
@@ -165,6 +213,182 @@ class ProcessingService:
             "run_id": run.id,
             "parsed": parsed_json if parse_ok else None,
             "parse_ok": parse_ok
+        }
+
+    async def _run_person_extractor_v2(
+        self,
+        message_text: str,
+        message_history: List[Dict[str, str]],
+        session_id: int,
+        message_id: int
+    ) -> Dict[str, Any]:
+        """Pipeline v2 - Stage 1: Extract persons from message only (no DB context)"""
+        prompt_text = get_prompt("person_extractor", "v1")
+        
+        # Минимальный контекст - только сообщение и история
+        context = {
+            "message_text": message_text[:2000] if len(message_text) > 2000 else message_text,
+            "message_history": message_history
+        }
+        
+        output_text, parsed_json, token_in, token_out, latency_ms = \
+            await self.llm.call_extractor(prompt_text, context, self.model)
+        
+        # Validate parsing
+        parse_ok = False
+        error_text = None
+        try:
+            if "error" not in parsed_json:
+                PersonExtractorOutput(**parsed_json)
+                parse_ok = True
+        except Exception as e:
+            error_text = str(e)
+        
+        # Store prompt run
+        input_data = context.copy()
+        input_data["system_prompt"] = prompt_text
+        
+        run = PromptRun(
+            session_id=session_id,
+            message_id=message_id,
+            prompt_name="person_extractor",
+            prompt_version="v1",
+            pipeline_version="v2",
+            model=self.model,
+            input_json=input_data,
+            output_text=output_text,
+            output_json=parsed_json,
+            parse_ok=parse_ok,
+            error_text=error_text,
+            token_in=token_in,
+            token_out=token_out,
+            latency_ms=latency_ms
+        )
+        self.db.add(run)
+        self.db.flush()
+        
+        return {
+            "run_id": run.id,
+            "parsed": parsed_json if parse_ok else None,
+            "parse_ok": parse_ok
+        }
+
+    def _apply_person_extractor_results_v2(
+        self,
+        user_id: int,
+        message_id: int,
+        person_result: Dict[str, Any]
+    ) -> Dict[int, Person]:
+        """Pipeline v2 - Apply person extractor results, return mapping of person_id -> Person"""
+        if not person_result["parse_ok"] or not person_result["parsed"]:
+            return {}
+        
+        person_output = PersonExtractorOutput(**person_result["parsed"])
+        person_map = {}  # person_id -> Person
+        
+        for person_data in person_output.persons:
+            # Find or create person
+            name = person_data.name.strip()
+            person_type = person_data.type
+            
+            # Check if person exists (check both v1 and v2, but prefer v2)
+            existing_person = self.db.query(Person).filter(
+                Person.user_id == user_id,
+                Person.display_name.ilike(name),
+                Person.pipeline_version == "v2"
+            ).first()
+            
+            if not existing_person:
+                # Check v1 as fallback
+                existing_person = self.db.query(Person).filter(
+                    Person.user_id == user_id,
+                    Person.display_name.ilike(name),
+                    Person.pipeline_version == "v1"
+                ).first()
+                
+                if existing_person:
+                    # Update to v2
+                    existing_person.pipeline_version = "v2"
+                    self.db.flush()
+            
+            if existing_person:
+                person_map[existing_person.id] = existing_person
+            else:
+                # Create new person for v2
+                person = Person(
+                    user_id=user_id,
+                    display_name=name,
+                    type=person_type,
+                    pipeline_version="v2",
+                    first_seen_memory_id=None  # Will be set when memory is created
+                )
+                self.db.add(person)
+                self.db.flush()
+                person_map[person.id] = person
+        
+        return person_map
+
+    async def _run_memory_extractor_v2(
+        self,
+        message_text: str,
+        extracted_persons: Dict[int, Person],  # person_id -> Person
+        context: Dict[str, Any],
+        message_id: int
+    ) -> Dict[str, Any]:
+        """Pipeline v2 - Stage 2: Extract memories using found persons"""
+        prompt_text = get_prompt("extractor", "v3")  # Use existing extractor prompt
+        
+        # Create a copy of context to avoid modifying original
+        v2_context = context.copy()
+        
+        # Add extracted persons to context (these are already found, so model should use them)
+        v2_context["extracted_persons"] = [
+            {"id": p.id, "name": p.display_name, "type": p.type}
+            for p in extracted_persons.values()
+        ]
+        v2_context["message_text"] = message_text[:2000] if len(message_text) > 2000 else message_text
+        
+        output_text, parsed_json, token_in, token_out, latency_ms = \
+            await self.llm.call_extractor(prompt_text, v2_context, self.model)
+        
+        # Validate parsing
+        parse_ok = False
+        error_text = None
+        try:
+            if "error" not in parsed_json:
+                ExtractorOutput(**parsed_json)
+                parse_ok = True
+        except Exception as e:
+            error_text = str(e)
+        
+        # Store prompt run
+        input_data = v2_context.copy()
+        input_data["system_prompt"] = prompt_text
+        
+        run = PromptRun(
+            session_id=v2_context.get("session_id"),
+            message_id=message_id,
+            prompt_name="memory_extractor",
+            prompt_version="v1",
+            pipeline_version="v2",
+            model=self.model,
+            input_json=input_data,
+            output_text=output_text,
+            output_json=parsed_json,
+            parse_ok=parse_ok,
+            error_text=error_text,
+            token_in=token_in,
+            token_out=token_out,
+            latency_ms=latency_ms
+        )
+        self.db.add(run)
+        self.db.flush()
+        
+        return {
+            "run_id": run.id,
+            "parsed": parsed_json if parse_ok else None,
+            "parse_ok": parse_ok,
+            "extracted_persons": extracted_persons
         }
 
     def _find_or_create_person(
@@ -231,7 +455,8 @@ class ProcessingService:
                             user_id=user_id,
                             display_name=found_name,
                             type=person_type,
-                            first_seen_memory_id=memory_id
+                            first_seen_memory_id=memory_id,
+                            pipeline_version="v1"
                         )
                         self.db.add(person)
                         self.db.flush()
@@ -252,7 +477,8 @@ class ProcessingService:
             user_id=user_id,
             display_name=name,
             type=person_type,
-            first_seen_memory_id=memory_id
+            first_seen_memory_id=memory_id,
+            pipeline_version="v1"
         )
         self.db.add(person)
         self.db.flush()
@@ -285,7 +511,8 @@ class ProcessingService:
                 time_text=mem_data.time_text,
                 location_text=mem_data.location_text,
                 topics=mem_data.topics,
-                importance_score=mem_data.importance
+                importance_score=mem_data.importance,
+                pipeline_version="v1"
             )
             self.db.add(memory)
             self.db.flush()
@@ -398,6 +625,104 @@ class ProcessingService:
                         if chapter_suggestion.confidence > existing_chapter_link.confidence:
                             existing_chapter_link.confidence = chapter_suggestion.confidence
                         processed_chapter_links[chapter_link_key] = max(chapter_suggestion.confidence, existing_chapter_link.confidence)
+        
+        return {
+            "memories": memories_created,
+            "persons": persons_created,
+            "chapters": chapters_created
+        }
+
+    def _apply_memory_extractor_results_v2(
+        self,
+        user_id: int,
+        session_id: int,
+        message_id: int,
+        result: Dict[str, Any],
+        extracted_persons: Dict[int, Person]
+    ) -> Dict[str, Any]:
+        """Pipeline v2 - Apply memory extractor results with found persons"""
+        if not result["parse_ok"] or not result["parsed"]:
+            return {"memories": 0, "persons": 0, "chapters": 0}
+        
+        extractor_output = ExtractorOutput(**result["parsed"])
+        memories_created = 0
+        persons_created = 0
+        chapters_created = 0
+        
+        # Map person names to Person objects (for matching by name from memory extractor output)
+        person_name_map = {p.display_name.lower(): p for p in extracted_persons.values()}
+        
+        for mem_data in extractor_output.memories:
+            # Create memory with pipeline_version="v2"
+            memory = Memory(
+                user_id=user_id,
+                session_id=session_id,
+                source_message_id=message_id,
+                summary=mem_data.summary,
+                narrative=mem_data.narrative,
+                time_text=mem_data.time_text,
+                location_text=mem_data.location_text,
+                topics=mem_data.topics,
+                importance_score=mem_data.importance,
+                pipeline_version="v2"
+            )
+            self.db.add(memory)
+            self.db.flush()
+            memories_created += 1
+            
+            # Link to extracted persons (match by name from memory extractor output)
+            processed_person_links = {}
+            for person_data in mem_data.persons:
+                person_name = person_data.name.strip().lower()
+                person = person_name_map.get(person_name)
+                
+                if not person:
+                    # Try fuzzy match (case insensitive)
+                    person = next((p for p in extracted_persons.values() if p.display_name.lower() == person_name), None)
+                
+                if person:
+                    link_key = (memory.id, person.id)
+                    if link_key not in processed_person_links:
+                        link = MemoryPerson(
+                            memory_id=memory.id,
+                            person_id=person.id,
+                            confidence=person_data.confidence
+                        )
+                        self.db.add(link)
+                        processed_person_links[link_key] = person_data.confidence
+            
+            # Handle chapter suggestions (same as v1)
+            processed_chapter_links = {}
+            for chapter_suggestion in mem_data.chapter_suggestions:
+                if chapter_suggestion.confidence > 0.7:
+                    chapter = self.db.query(Chapter).filter(
+                        Chapter.user_id == user_id,
+                        Chapter.title.ilike(chapter_suggestion.title)
+                    ).first()
+                    
+                    if not chapter:
+                        max_order = self.db.query(Chapter).filter(
+                            Chapter.user_id == user_id
+                        ).count()
+                        chapter = Chapter(
+                            user_id=user_id,
+                            title=chapter_suggestion.title,
+                            order_index=max_order,
+                            status="draft"
+                        )
+                        self.db.add(chapter)
+                        self.db.flush()
+                        chapters_created += 1
+                    
+                    chapter_link_key = (memory.id, chapter.id)
+                    if chapter_link_key not in processed_chapter_links:
+                        link = MemoryChapter(
+                            memory_id=memory.id,
+                            chapter_id=chapter.id,
+                            confidence=chapter_suggestion.confidence
+                        )
+                        self.db.add(link)
+                        processed_chapter_links[chapter_link_key] = chapter_suggestion.confidence
         
         return {
             "memories": memories_created,

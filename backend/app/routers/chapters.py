@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from typing import Optional
 from app.database import get_db
 from app.models import Chapter, Memory, MemoryChapter
 from app.schemas import ChapterResponse, MemoryResponse
@@ -8,11 +9,25 @@ router = APIRouter()
 
 
 @router.get("/", response_model=list[ChapterResponse])
-async def list_chapters(user_id: int, db: Session = Depends(get_db)):
-    """List all chapters for a user"""
-    chapters = db.query(Chapter).filter(
-        Chapter.user_id == user_id
-    ).order_by(Chapter.order_index).all()
+async def list_chapters(
+    user_id: int,
+    pipeline_version: Optional[str] = Query(None, description="Filter chapters by pipeline version of linked memories"),
+    db: Session = Depends(get_db)
+):
+    """List all chapters for a user, optionally filtered by pipeline_version of linked memories"""
+    query = db.query(Chapter).filter(Chapter.user_id == user_id)
+    
+    if pipeline_version:
+        # Filter chapters that have memories with this pipeline_version
+        memory_ids = db.query(Memory.id).filter(
+            Memory.pipeline_version == pipeline_version
+        ).subquery()
+        chapter_ids = db.query(MemoryChapter.chapter_id).filter(
+            MemoryChapter.memory_id.in_(db.query(memory_ids.c.id))
+        ).distinct().subquery()
+        query = query.filter(Chapter.id.in_(db.query(chapter_ids.c.chapter_id)))
+    
+    chapters = query.order_by(Chapter.order_index).all()
     return chapters
 
 

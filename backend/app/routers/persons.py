@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from typing import Optional
 from app.database import get_db
 from app.models import Person, Memory, MemoryPerson
 from app.schemas import PersonResponse, MemoryResponse
@@ -13,9 +14,16 @@ class MergeRequest(BaseModel):
 
 
 @router.get("/", response_model=list[PersonResponse])
-async def list_persons(user_id: int, db: Session = Depends(get_db)):
-    """List all persons for a user"""
-    persons = db.query(Person).filter(Person.user_id == user_id).all()
+async def list_persons(
+    user_id: int,
+    pipeline_version: Optional[str] = Query(None, description="Filter by pipeline version: v1 or v2"),
+    db: Session = Depends(get_db)
+):
+    """List all persons for a user, optionally filtered by pipeline_version"""
+    query = db.query(Person).filter(Person.user_id == user_id)
+    if pipeline_version:
+        query = query.filter(Person.pipeline_version == pipeline_version)
+    persons = query.all()
     return persons
 
 

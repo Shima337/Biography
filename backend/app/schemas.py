@@ -3,6 +3,19 @@ from typing import List, Optional, Literal
 from datetime import datetime
 
 
+# Person Extractor Output Schema (для Pipeline v2)
+class PersonExtractorPerson(BaseModel):
+    name: str
+    type: Literal["family", "friend", "romance", "colleague", "other"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    mentioned_as: Optional[str] = None  # Как упомянут в тексте (роль или имя)
+
+
+class PersonExtractorOutput(BaseModel):
+    persons: List[PersonExtractorPerson] = []
+    notes: Optional[str] = None
+
+
 # Extractor Output Schema
 class ExtractorPerson(BaseModel):
     name: str

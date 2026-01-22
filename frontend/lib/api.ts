@@ -19,6 +19,7 @@ export interface Memory {
   location_text: string | null
   topics: string[]
   importance_score: number
+  pipeline_version?: string
   created_at: string
 }
 
@@ -28,6 +29,7 @@ export interface Person {
   display_name: string
   type: string
   first_seen_memory_id: number | null
+  pipeline_version?: string
   notes: string | null
 }
 
@@ -149,16 +151,22 @@ export const api = {
     }),
 
   // Memories
-  getMemories: (params?: { user_id?: number; session_id?: number }) => {
+  getMemories: (params?: { user_id?: number; session_id?: number; pipeline_version?: string }) => {
     const query = new URLSearchParams()
     if (params?.user_id) query.append('user_id', params.user_id.toString())
     if (params?.session_id) query.append('session_id', params.session_id.toString())
+    if (params?.pipeline_version) query.append('pipeline_version', params.pipeline_version)
     return fetchAPI<Memory[]>(`/api/memories?${query}`)
   },
   getMemory: (id: number) => fetchAPI<Memory>(`/api/memories/${id}`),
 
   // Persons
-  getPersons: (user_id: number) => fetchAPI<Person[]>(`/api/persons?user_id=${user_id}`),
+  getPersons: (user_id: number, pipeline_version?: string) => {
+    const query = new URLSearchParams()
+    query.append('user_id', user_id.toString())
+    if (pipeline_version) query.append('pipeline_version', pipeline_version)
+    return fetchAPI<Person[]>(`/api/persons?${query.toString()}`)
+  },
   getPerson: (id: number) => fetchAPI<Person>(`/api/persons/${id}`),
   getPersonMemories: (id: number) => fetchAPI<Memory[]>(`/api/persons/${id}/memories`),
   mergePersons: (personId: number, targetPersonId: number) =>
@@ -171,7 +179,12 @@ export const api = {
     }),
 
   // Chapters
-  getChapters: (user_id: number) => fetchAPI<Chapter[]>(`/api/chapters?user_id=${user_id}`),
+  getChapters: (user_id: number, pipeline_version?: string) => {
+    const query = new URLSearchParams()
+    query.append('user_id', user_id.toString())
+    if (pipeline_version) query.append('pipeline_version', pipeline_version)
+    return fetchAPI<Chapter[]>(`/api/chapters?${query.toString()}`)
+  },
   getChapter: (id: number) => fetchAPI<Chapter>(`/api/chapters/${id}`),
   getChapterMemories: (id: number) => fetchAPI<Memory[]>(`/api/chapters/${id}/memories`),
   getChapterCoverage: (id: number) => fetchAPI(`/api/chapters/${id}/coverage`),
