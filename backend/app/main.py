@@ -9,7 +9,9 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="LifeBook Lab Console API",
     description="Developer-facing API for debugging AI memory extraction",
-    version="1.0.0"
+    version="1.0.0",
+    # Max request body size is controlled by uvicorn --limit-max-requests
+    # We set it in docker-compose.yml via uvicorn command
 )
 
 app.add_middleware(

@@ -53,7 +53,7 @@ class OpenAIProvider(LLMProvider):
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.3,
-                timeout=30.0,  # 30 секунд таймаут
+                timeout=120.0,  # 120 секунд таймаут для длинных запросов
             )
             
             latency_ms = int((time.time() - start_time) * 1000)
@@ -92,7 +92,7 @@ class OpenAIProvider(LLMProvider):
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.5,
-                timeout=30.0,  # 30 секунд таймаут
+                timeout=120.0,  # 120 секунд таймаут для длинных запросов
             )
             
             latency_ms = int((time.time() - start_time) * 1000)
