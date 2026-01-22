@@ -288,6 +288,9 @@ class ProcessingService:
             self.db.flush()
             memories_created += 1
             
+            # Отслеживать уже обработанные связи для этой памяти (чтобы избежать дубликатов в одной транзакции)
+            processed_person_links = {}  # {(memory_id, person_id): max_confidence}
+            
             # Create/update persons with improved matching
             for person_data in mem_data.persons:
                 # Check if person exists before creating
@@ -309,7 +312,15 @@ class ProcessingService:
                     if person.first_seen_memory_id == memory.id:
                         persons_created += 1
                 
-                # Проверить, не существует ли уже связь между этой памятью и этим человеком
+                # Проверить, не обрабатывали ли мы уже эту связь в текущей транзакции
+                link_key = (memory.id, person.id)
+                if link_key in processed_person_links:
+                    # Обновить confidence, если новая выше
+                    if person_data.confidence > processed_person_links[link_key]:
+                        processed_person_links[link_key] = person_data.confidence
+                    continue
+                
+                # Проверить, не существует ли уже связь в базе данных
                 existing_link = self.db.query(MemoryPerson).filter(
                     MemoryPerson.memory_id == memory.id,
                     MemoryPerson.person_id == person.id
@@ -323,10 +334,15 @@ class ProcessingService:
                         confidence=person_data.confidence
                     )
                     self.db.add(link)
+                    processed_person_links[link_key] = person_data.confidence
                 else:
                     # Обновить confidence, если новая выше
                     if person_data.confidence > existing_link.confidence:
                         existing_link.confidence = person_data.confidence
+                    processed_person_links[link_key] = max(person_data.confidence, existing_link.confidence)
+            
+            # Отслеживать уже обработанные связи глав для этой памяти
+            processed_chapter_links = {}  # {(memory_id, chapter_id): max_confidence}
             
             # Handle chapter suggestions
             for chapter_suggestion in mem_data.chapter_suggestions:
@@ -351,7 +367,15 @@ class ProcessingService:
                         self.db.flush()
                         chapters_created += 1
                     
-                    # Проверить, не существует ли уже связь между этой памятью и этой главой
+                    # Проверить, не обрабатывали ли мы уже эту связь в текущей транзакции
+                    chapter_link_key = (memory.id, chapter.id)
+                    if chapter_link_key in processed_chapter_links:
+                        # Обновить confidence, если новая выше
+                        if chapter_suggestion.confidence > processed_chapter_links[chapter_link_key]:
+                            processed_chapter_links[chapter_link_key] = chapter_suggestion.confidence
+                        continue
+                    
+                    # Проверить, не существует ли уже связь в базе данных
                     existing_chapter_link = self.db.query(MemoryChapter).filter(
                         MemoryChapter.memory_id == memory.id,
                         MemoryChapter.chapter_id == chapter.id
@@ -365,10 +389,12 @@ class ProcessingService:
                             confidence=chapter_suggestion.confidence
                         )
                         self.db.add(link)
+                        processed_chapter_links[chapter_link_key] = chapter_suggestion.confidence
                     else:
                         # Обновить confidence, если новая выше
                         if chapter_suggestion.confidence > existing_chapter_link.confidence:
                             existing_chapter_link.confidence = chapter_suggestion.confidence
+                        processed_chapter_links[chapter_link_key] = max(chapter_suggestion.confidence, existing_chapter_link.confidence)
         
         return {
             "memories": memories_created,
