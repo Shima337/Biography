@@ -6,7 +6,7 @@ from app.models import (
     User, Session as DBSession, Message, Memory, Person, Chapter,
     MemoryPerson, MemoryChapter, QuestionQueue, PromptRun
 )
-from app.schemas import ExtractorOutput, PlannerOutput, ExtractorMemory
+from app.schemas import ExtractorOutput, PlannerOutput, ExtractorMemory, ExtractorPerson
 from app.llm_provider import get_llm_provider
 from app.prompts import get_prompt
 import os
@@ -16,13 +16,13 @@ class ProcessingService:
     def __init__(self, db: Session):
         self.db = db
         self.llm = get_llm_provider()
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.model = os.getenv("OPENAI_MODEL", "gpt-5.2")
 
     async def process_message(
         self,
         session_id: int,
         message_text: str,
-        extractor_version: str = "v1",
+        extractor_version: str = "v3",
         planner_version: str = "v1"
     ) -> Dict[str, Any]:
         """Main pipeline: process user message through extractor and planner"""
@@ -73,6 +73,11 @@ class ProcessingService:
 
     def _build_extractor_context(self, user_id: int, session_id: int) -> Dict[str, Any]:
         """Build context for extractor prompt"""
+        # Get recent messages from this session for context
+        recent_messages = self.db.query(Message).filter(
+            Message.session_id == session_id
+        ).order_by(desc(Message.created_at)).limit(5).all()
+        
         # Get recent memories
         recent_memories = self.db.query(Memory).filter(
             Memory.user_id == user_id
@@ -87,6 +92,10 @@ class ProcessingService:
         return {
             "session_id": session_id,
             "message_text": "",  # Will be filled in
+            "message_history": [
+                {"role": m.role, "text": m.content_text}
+                for m in reversed(recent_messages[:-1])  # All except the last (current) message
+            ],
             "known_persons": [
                 {"id": p.id, "name": p.display_name, "type": p.type}
                 for p in persons
@@ -150,6 +159,97 @@ class ProcessingService:
             "parse_ok": parse_ok
         }
 
+    def _find_or_create_person(
+        self,
+        user_id: int,
+        person_data: ExtractorPerson,
+        message_id: int,
+        memory_id: int
+    ) -> Person:
+        """Smart person finding/creation with role and name matching"""
+        import re
+        
+        name = person_data.name.strip()
+        person_type = person_data.type
+        
+        # Get the source message for context
+        message = self.db.query(Message).filter(Message.id == message_id).first()
+        message_text = message.content_text.lower() if message else ""
+        
+        # 1. Exact match by name
+        person = self.db.query(Person).filter(
+            Person.user_id == user_id,
+            Person.display_name.ilike(name)
+        ).first()
+        
+        if person:
+            return person
+        
+        # 2. For family members: check if role and name appear together in message
+        if person_type == "family":
+            # Family role mappings
+            family_roles = {
+                "папа": ["отец", "dad", "папочка", "пап"],
+                "мама": ["мать", "mother", "мамочка", "мам"],
+                "брат": ["brother"],
+                "сестра": ["sister", "сестренка"]
+            }
+            
+            # Check if message contains both role and a name
+            # Pattern: "роль ИМЯ" or "ИМЯ, мой роль"
+            name_pattern = r'\b([А-ЯЁ][а-яё]+)\b'
+            names_in_message = re.findall(name_pattern, message_text)
+            
+            # If we have a role and a name in the message, try to link them
+            role_lower = name.lower()
+            for found_name in names_in_message:
+                # Check if this name is close to the role in text
+                role_pos = message_text.find(role_lower)
+                name_pos = message_text.find(found_name.lower())
+                
+                if role_pos != -1 and name_pos != -1 and abs(role_pos - name_pos) < 30:
+                    # Check if there's already a person with this name
+                    existing_person = self.db.query(Person).filter(
+                        Person.user_id == user_id,
+                        Person.display_name.ilike(found_name)
+                    ).first()
+                    
+                    if existing_person and existing_person.type == "family":
+                        # Use the existing person with the name
+                        return existing_person
+                    elif not existing_person:
+                        # Create new person with the name (not the role)
+                        person = Person(
+                            user_id=user_id,
+                            display_name=found_name,
+                            type=person_type,
+                            first_seen_memory_id=memory_id
+                        )
+                        self.db.add(person)
+                        self.db.flush()
+                        return person
+            
+            # 3. Check if there's a person of the same type that might be the same
+            same_type_persons = self.db.query(Person).filter(
+                Person.user_id == user_id,
+                Person.type == person_type
+            ).all()
+            
+            # If only one person of this type exists, might be the same
+            if len(same_type_persons) == 1:
+                return same_type_persons[0]
+        
+        # 4. Create new person
+        person = Person(
+            user_id=user_id,
+            display_name=name,
+            type=person_type,
+            first_seen_memory_id=memory_id
+        )
+        self.db.add(person)
+        self.db.flush()
+        return person
+
     def _apply_extractor_results(
         self,
         user_id: int,
@@ -183,23 +283,26 @@ class ProcessingService:
             self.db.flush()
             memories_created += 1
             
-            # Create/update persons
+            # Create/update persons with improved matching
             for person_data in mem_data.persons:
-                person = self.db.query(Person).filter(
+                # Check if person exists before creating
+                existing_person = self.db.query(Person).filter(
                     Person.user_id == user_id,
                     Person.display_name.ilike(person_data.name)
                 ).first()
                 
-                if not person:
-                    person = Person(
-                        user_id=user_id,
-                        display_name=person_data.name,
-                        type=person_data.type,
-                        first_seen_memory_id=memory.id
-                    )
-                    self.db.add(person)
-                    self.db.flush()
-                    persons_created += 1
+                person = self._find_or_create_person(
+                    user_id=user_id,
+                    person_data=person_data,
+                    message_id=message_id,
+                    memory_id=memory.id
+                )
+                
+                # Check if this is a new person (wasn't in DB before)
+                if not existing_person:
+                    # Check if person was just created (has the memory_id we passed)
+                    if person.first_seen_memory_id == memory.id:
+                        persons_created += 1
                 
                 # Link memory to person
                 link = MemoryPerson(

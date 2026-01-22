@@ -137,7 +137,7 @@ def seed_database():
                 message_id=message.id if 'message' in locals() else None,
                 prompt_name="extractor",
                 prompt_version="v1",
-                model="gpt-4o-mini",
+                model="gpt-5.2",
                 input_json={"message_text": "Sample input"},
                 output_text='{"memories": []}',
                 output_json={"memories": []},
