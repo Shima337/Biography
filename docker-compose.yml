@@ -27,7 +27,7 @@ services:
       DATABASE_URL: postgresql://lifebook:lifebook_dev@postgres:5432/lifebook_lab
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.2}
+      OPENAI_MODEL: gpt-5.2
     volumes:
       - ./backend:/app
     depends_on:
