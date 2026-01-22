@@ -12,6 +12,13 @@ export default function PersonsPage() {
 
   useEffect(() => {
     loadSelectedUser()
+    
+    // Listen for user changes
+    const handleUserChange = () => {
+      loadSelectedUser()
+    }
+    window.addEventListener('userChanged', handleUserChange)
+    return () => window.removeEventListener('userChanged', handleUserChange)
   }, [])
 
   useEffect(() => {

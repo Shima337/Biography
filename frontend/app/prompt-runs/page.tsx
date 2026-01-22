@@ -16,6 +16,13 @@ export default function PromptRunsPage() {
 
   useEffect(() => {
     loadSelectedUser()
+    
+    // Listen for user changes
+    const handleUserChange = () => {
+      loadSelectedUser()
+    }
+    window.addEventListener('userChanged', handleUserChange)
+    return () => window.removeEventListener('userChanged', handleUserChange)
   }, [])
 
   useEffect(() => {

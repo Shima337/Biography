@@ -53,6 +53,8 @@ export default function UserSelector() {
       await loadUsers()
       setSelectedUserId(newUser.id)
       localStorage.setItem('selectedUserId', newUser.id.toString())
+      // Dispatch event to notify other components
+      window.dispatchEvent(new CustomEvent('userChanged', { detail: { userId: newUser.id } }))
     } catch (error) {
       console.error('Failed to create user:', error)
       alert('Failed to create user')
@@ -64,6 +66,8 @@ export default function UserSelector() {
   const handleSelectUser = (userId: number) => {
     setSelectedUserId(userId)
     localStorage.setItem('selectedUserId', userId.toString())
+    // Dispatch event to notify other components
+    window.dispatchEvent(new CustomEvent('userChanged', { detail: { userId } }))
   }
 
   if (loading) {
