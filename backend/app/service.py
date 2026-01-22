@@ -309,13 +309,24 @@ class ProcessingService:
                     if person.first_seen_memory_id == memory.id:
                         persons_created += 1
                 
-                # Link memory to person
-                link = MemoryPerson(
-                    memory_id=memory.id,
-                    person_id=person.id,
-                    confidence=person_data.confidence
-                )
-                self.db.add(link)
+                # Проверить, не существует ли уже связь между этой памятью и этим человеком
+                existing_link = self.db.query(MemoryPerson).filter(
+                    MemoryPerson.memory_id == memory.id,
+                    MemoryPerson.person_id == person.id
+                ).first()
+                
+                if not existing_link:
+                    # Link memory to person
+                    link = MemoryPerson(
+                        memory_id=memory.id,
+                        person_id=person.id,
+                        confidence=person_data.confidence
+                    )
+                    self.db.add(link)
+                else:
+                    # Обновить confidence, если новая выше
+                    if person_data.confidence > existing_link.confidence:
+                        existing_link.confidence = person_data.confidence
             
             # Handle chapter suggestions
             for chapter_suggestion in mem_data.chapter_suggestions:
@@ -340,13 +351,24 @@ class ProcessingService:
                         self.db.flush()
                         chapters_created += 1
                     
-                    # Link memory to chapter
-                    link = MemoryChapter(
-                        memory_id=memory.id,
-                        chapter_id=chapter.id,
-                        confidence=chapter_suggestion.confidence
-                    )
-                    self.db.add(link)
+                    # Проверить, не существует ли уже связь между этой памятью и этой главой
+                    existing_chapter_link = self.db.query(MemoryChapter).filter(
+                        MemoryChapter.memory_id == memory.id,
+                        MemoryChapter.chapter_id == chapter.id
+                    ).first()
+                    
+                    if not existing_chapter_link:
+                        # Link memory to chapter
+                        link = MemoryChapter(
+                            memory_id=memory.id,
+                            chapter_id=chapter.id,
+                            confidence=chapter_suggestion.confidence
+                        )
+                        self.db.add(link)
+                    else:
+                        # Обновить confidence, если новая выше
+                        if chapter_suggestion.confidence > existing_chapter_link.confidence:
+                            existing_chapter_link.confidence = chapter_suggestion.confidence
         
         return {
             "memories": memories_created,
