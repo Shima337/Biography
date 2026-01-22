@@ -41,23 +41,18 @@ export default function ChaptersPage() {
     try {
       const data = await api.getChapters(selectedUserId)
       setChapters(data)
-
-  useEffect(() => {
-    if (selectedChapter) {
-      loadChapterData(selectedChapter.id)
-    }
-  }, [selectedChapter])
-
-  const loadChapters = async () => {
-    try {
-      const data = await api.getChapters(userId)
-      setChapters(data)
     } catch (error) {
       console.error('Failed to load chapters:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (selectedChapter) {
+      loadChapterData(selectedChapter.id)
+    }
+  }, [selectedChapter])
 
   const loadChapterData = async (chapterId: number) => {
     try {
