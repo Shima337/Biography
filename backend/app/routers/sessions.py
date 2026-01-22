@@ -71,7 +71,7 @@ async def get_session_messages(session_id: int, db: Session = Depends(get_db)):
 async def create_message(
     session_id: int,
     message: MessageCreate,
-    extractor_version: str = Query("v1"),
+    extractor_version: str = Query("v3"),
     planner_version: str = Query("v1"),
     db: Session = Depends(get_db)
 ):
