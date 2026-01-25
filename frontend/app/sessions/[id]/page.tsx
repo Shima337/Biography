@@ -17,6 +17,7 @@ export default function SessionDetailPage() {
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedPrompts, setExpandedPrompts] = useState<Set<number>>(new Set())
+  const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     loadData()
@@ -69,6 +70,16 @@ export default function SessionDetailPage() {
     setExpandedPrompts(newExpanded)
   }
 
+  const toggleMessage = (messageId: number) => {
+    const newExpanded = new Set(expandedMessages)
+    if (newExpanded.has(messageId)) {
+      newExpanded.delete(messageId)
+    } else {
+      newExpanded.add(messageId)
+    }
+    setExpandedMessages(newExpanded)
+  }
+
   if (loading) return <div>Loading...</div>
 
   return (
@@ -115,19 +126,41 @@ export default function SessionDetailPage() {
       </div>
 
       <h2>Message Timeline</h2>
-      {messages.map(message => {
+      {[...messages].reverse().map(message => {
         const runs = getMessageRuns(message.id)
+        const isMessageExpanded = expandedMessages.has(message.id)
         return (
-          <div key={message.id} style={{ marginBottom: '30px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
-            <div style={{ marginBottom: '10px' }}>
-              <strong>{message.role}:</strong> {message.content_text}
-              <div style={{ fontSize: '12px', color: '#666' }}>
-                {new Date(message.created_at).toLocaleString()}
+          <div key={message.id} style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ marginBottom: '5px' }}>
+                  <strong>{message.role}:</strong> {message.content_text}
+                </div>
+                <div style={{ fontSize: '12px', color: '#666' }}>
+                  {new Date(message.created_at).toLocaleString()}
+                </div>
               </div>
+              {runs.length > 0 && (
+                <button
+                  onClick={() => toggleMessage(message.id)}
+                  style={{
+                    padding: '5px 10px',
+                    backgroundColor: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    marginLeft: '10px'
+                  }}
+                >
+                  {isMessageExpanded ? '▼ Скрыть детали' : '▶ Показать детали'}
+                </button>
+              )}
             </div>
             
-            {runs.length > 0 && (
-              <div style={{ marginTop: '15px' }}>
+            {isMessageExpanded && runs.length > 0 && (
+              <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #eee' }}>
                 <h4>Prompt Runs:</h4>
                 {runs.map(run => {
                   const isExpanded = expandedPrompts.has(run.id)

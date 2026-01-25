@@ -285,13 +285,39 @@ class ProcessingService:
         
         person_output = PersonExtractorOutput(**person_result["parsed"])
         person_map = {}  # person_id -> Person
+        processed_names = []  # Track names we've processed to detect duplicates
         
         for person_data in person_output.persons:
             # Find or create person
             name = person_data.name.strip()
             person_type = person_data.type
             
-            # Check if person exists (check both v1 and v2, but prefer v2)
+            # Check if this name is a variant of an already processed person in this batch
+            # (e.g., "Тася" vs "Таиса Владимировна", "Витя" vs "Виктор")
+            merged = False
+            for processed_name, processed_person in processed_names:
+                # Check if names are variants (one contains the other, or they're similar)
+                name_lower = name.lower()
+                processed_lower = processed_name.lower()
+                
+                # Check if one name is contained in another (e.g., "Тася" in "Таиса Владимировна")
+                if name_lower in processed_lower or processed_lower in name_lower:
+                    # Prefer longer/more formal name
+                    if len(name) > len(processed_name):
+                        # Update existing person with longer name
+                        processed_person.display_name = name
+                        self.db.flush()
+                        processed_names.remove((processed_name, processed_person))
+                        processed_names.append((name, processed_person))
+                    # Use existing person
+                    person_map[processed_person.id] = processed_person
+                    merged = True
+                    break
+            
+            if merged:
+                continue
+            
+            # Check if person exists in database (check both v1 and v2, but prefer v2)
             existing_person = self.db.query(Person).filter(
                 Person.user_id == user_id,
                 Person.display_name.ilike(name),
@@ -311,8 +337,28 @@ class ProcessingService:
                     existing_person.pipeline_version = "v2"
                     self.db.flush()
             
+            # Also check for variant names in database (fuzzy matching)
+            if not existing_person:
+                all_persons = self.db.query(Person).filter(
+                    Person.user_id == user_id,
+                    Person.pipeline_version == "v2"
+                ).all()
+                
+                for db_person in all_persons:
+                    db_name_lower = db_person.display_name.lower()
+                    name_lower = name.lower()
+                    # Check if names are variants
+                    if name_lower in db_name_lower or db_name_lower in name_lower:
+                        # Prefer longer name
+                        if len(name) > len(db_person.display_name):
+                            db_person.display_name = name
+                            self.db.flush()
+                        existing_person = db_person
+                        break
+            
             if existing_person:
                 person_map[existing_person.id] = existing_person
+                processed_names.append((name, existing_person))
             else:
                 # Create new person for v2
                 person = Person(
@@ -325,6 +371,7 @@ class ProcessingService:
                 self.db.add(person)
                 self.db.flush()
                 person_map[person.id] = person
+                processed_names.append((name, person))
         
         return person_map
 

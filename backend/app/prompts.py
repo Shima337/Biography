@@ -86,16 +86,16 @@ CRITICAL: Extract memories and persons ONLY from the CURRENT message (message_te
 
 CRITICAL RULES FOR PERSONS:
 1. **Extract persons ONLY from the current message_text** - do not extract persons mentioned only in message_history
-2. **If text mentions both a role (папа, мама) AND a name in the same context, use the NAME as the person's name, not the role.**
+2. **Extract ALL persons mentioned** - don't miss anyone, even if mentioned briefly (папа, мама, дедушка, бабушка, брат, сестра, друзья, коллеги, все упомянутые люди)
+3. **If text mentions both a role (папа, мама) AND a name in the same context, use the NAME as the person's name, not the role.**
    Example: "папа Иван" or "Иван, мой папа" → person name should be "Иван", type="family"
-   
-3. **Use message_history ONLY for context**: If you see a role mentioned in the CURRENT message (e.g., "папа"), check message_history to see if a name was mentioned earlier for this same person. If found, use the name instead of the role. But DO NOT extract the person if they are NOT mentioned in the current message.
-   
-4. **Use known_persons ONLY for linking**: If "known_persons" contains a person with the same type (family) and you're extracting a role that matches that type, consider if they might be the same person. But still extract them from the current message.
-   
-5. **Always prefer names over roles when both are available in the same message.**
-   
-6. **If only a role is mentioned in the current message (e.g., "папа"), extract it as-is, but use message_history to find the name if available.**
+4. **CRITICAL - Variant names in same message**: If the same person is mentioned with different name variants in the CURRENT message (e.g., "бабушка Тася" and "Таиса Владимировна" or "Виктор" and "Витя"), extract them as ONE person with the FULL/MOST FORMAL name.
+   Example: If message says "бабушка Тася, она же Таиса Владимировна" → extract ONE person with name "Таиса Владимировна" (full name), type="family"
+   Example: If message says "Виктор (Витя)" or "Витя, он же Виктор" → extract ONE person with name "Виктор" (full name), type="family"
+5. **Use message_history ONLY for context**: If you see a role mentioned in the CURRENT message (e.g., "папа"), check message_history to see if a name was mentioned earlier for this same person. If found, use the name instead of the role. But DO NOT extract the person if they are NOT mentioned in the current message.
+6. **Use known_persons ONLY for linking**: If "known_persons" contains a person with the same type (family) and you're extracting a role that matches that type, consider if they might be the same person. But still extract them from the current message.
+7. **Always prefer names over roles when both are available in the same message.**
+8. **If only a role is mentioned in the current message (e.g., "папа"), extract it as-is, but use message_history to find the name if available.**
 
 Output JSON with this exact schema:
 {
@@ -128,14 +128,15 @@ Output JSON with this exact schema:
 
 RULES:
 1. **Extract memories ONLY from the current message_text** - do not extract memories from message_history
-2. Extract ALL persons mentioned in the CURRENT message - names, family members, friends, colleagues, anyone
-3. If a person is mentioned in the CURRENT message, they MUST appear in the "persons" array
-4. Infer person type from context (family = родители, мама, папа, брат, сестра; friend = друг, подруга; colleague = коллега, начальник; romance = парень, девушка, муж, жена)
-5. Extract all meaningful memories from the CURRENT message only
-6. Link to persons if mentioned in the CURRENT message
-7. Suggest chapters if relevant
-8. **CRITICAL**: When both role and name appear together, extract the NAME, not the role
-9. **CRITICAL**: Do NOT extract persons or memories that are mentioned ONLY in message_history - they must be mentioned in the current message_text"""
+2. **CRITICAL - Extract ALL persons**: Extract EVERY person mentioned in the CURRENT message - names, family members (папа, мама, дедушка, бабушка, брат, сестра), friends, colleagues, anyone. Don't skip anyone, even if mentioned briefly or indirectly.
+3. **If a person is mentioned in the CURRENT message, they MUST appear in the "persons" array** - no exceptions
+4. **Variant names**: If the same person is mentioned with different name variants in the CURRENT message (e.g., "бабушка Тася" and "Таиса Владимировна" or "Виктор" and "Витя"), extract them as ONE person with the FULL/MOST FORMAL name in the persons array.
+5. Infer person type from context (family = родители, мама, папа, брат, сестра, дедушка, бабушка; friend = друг, подруга; colleague = коллега, начальник; romance = парень, девушка, муж, жена)
+6. Extract all meaningful memories from the CURRENT message only
+7. Link to persons if mentioned in the CURRENT message
+8. Suggest chapters if relevant
+9. **CRITICAL**: When both role and name appear together, extract the NAME, not the role
+10. **CRITICAL**: Do NOT extract persons or memories that are mentioned ONLY in message_history - they must be mentioned in the current message_text"""
     },
     
     "person_extractor": {
@@ -149,7 +150,10 @@ RULES FOR PERSON EXTRACTION:
 3. **If text mentions both a role (папа, мама) AND a name in the same context, use the NAME as the person's name, not the role.**
    Example: "папа Иван" or "Иван, мой папа" → person name should be "Иван", type="family"
 4. **If only a role is mentioned in the CURRENT message** (e.g., "папа", "мама", "дедушка", "бабушка"), extract it as-is with the role as the name
-5. **Use message_history ONLY for context**: If you see a role mentioned in the CURRENT message, check message_history to see if a name was mentioned earlier for this same person. If found, use the name instead of the role. But DO NOT extract the person if they are NOT mentioned in the current message.
+5. **CRITICAL - Variant names in same message**: If the same person is mentioned with different name variants in the CURRENT message (e.g., "бабушка Тася" and "Таиса Владимировна" or "Виктор" and "Витя"), extract them as ONE person with the FULL/MOST FORMAL name. 
+   Example: If message says "бабушка Тася, она же Таиса Владимировна" → extract ONE person with name "Таиса Владимировна" (full name), type="family"
+   Example: If message says "Виктор (Витя)" or "Витя, он же Виктор" → extract ONE person with name "Виктор" (full name), type="family"
+6. **Use message_history ONLY for context**: If you see a role mentioned in the CURRENT message, check message_history to see if a name was mentioned earlier for this same person. If found, use the name instead of the role. But DO NOT extract the person if they are NOT mentioned in the current message.
 6. **Infer person type from context:**
    - family = родители, мама, папа, дедушка, бабушка, брат, сестра, дядя, тетя
    - friend = друг, подруга
