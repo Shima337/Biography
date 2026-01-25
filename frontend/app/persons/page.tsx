@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react'
 import { api, Person, Memory } from '@/lib/api'
 
 export default function PersonsPage() {
-  const [personsV1, setPersonsV1] = useState<Person[]>([])
-  const [personsV2, setPersonsV2] = useState<Person[]>([])
+  const [persons, setPersons] = useState<Person[]>([])
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null)
   const [personMemories, setPersonMemories] = useState<Memory[]>([])
   const [loading, setLoading] = useState(true)
@@ -39,12 +38,8 @@ export default function PersonsPage() {
     if (!selectedUserId) return
     
     try {
-      const [v1Data, v2Data] = await Promise.all([
-        api.getPersons(selectedUserId, 'v1'),
-        api.getPersons(selectedUserId, 'v2')
-      ])
-      setPersonsV1(v1Data)
-      setPersonsV2(v2Data)
+      const data = await api.getPersons(selectedUserId, 'v2')
+      setPersons(data)
     } catch (error) {
       console.error('Failed to load persons:', error)
     } finally {
@@ -80,53 +75,43 @@ export default function PersonsPage() {
     )
   }
 
-  const renderPersonTable = (persons: Person[], title: string, pipelineVersion: string) => (
-    <div style={{ flex: 1 }}>
-      <h3 style={{ marginBottom: '10px', padding: '10px', backgroundColor: pipelineVersion === 'v1' ? '#e3f2fd' : '#f3e5f5', borderRadius: '4px' }}>
-        {title} ({persons.length} персон)
-      </h3>
-      <table style={{ width: '100%' }}>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {persons.length === 0 ? (
-            <tr>
-              <td colSpan={4} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                Нет персон для этого пайплайна
-              </td>
-            </tr>
-          ) : (
-            persons.map(person => (
-              <tr key={person.id}>
-                <td>{person.id}</td>
-                <td>{person.display_name}</td>
-                <td>{person.type}</td>
-                <td>
-                  <button onClick={() => setSelectedPerson(person)}>View</button>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
-
   return (
     <div>
-      <h1>People - Pipeline Comparison</h1>
+      <h1>People</h1>
       <div style={{ marginBottom: '15px', color: '#666' }}>
         Showing people for User ID: <strong>{selectedUserId}</strong>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        {renderPersonTable(personsV1, 'Pipeline v1 (Single-stage)', 'v1')}
-        {renderPersonTable(personsV2, 'Pipeline v2 (Two-stage)', 'v2')}
+      <div style={{ flex: 1 }}>
+        <table style={{ width: '100%' }}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {persons.length === 0 ? (
+              <tr>
+                <td colSpan={4} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                  No persons found
+                </td>
+              </tr>
+            ) : (
+              persons.map(person => (
+                <tr key={person.id}>
+                  <td>{person.id}</td>
+                  <td>{person.display_name}</td>
+                  <td>{person.type}</td>
+                  <td>
+                    <button onClick={() => setSelectedPerson(person)}>View</button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
       
       {selectedPerson && (

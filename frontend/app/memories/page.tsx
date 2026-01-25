@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react'
 import { api, Memory } from '@/lib/api'
 
 export default function MemoriesPage() {
-  const [memoriesV1, setMemoriesV1] = useState<Memory[]>([])
-  const [memoriesV2, setMemoriesV2] = useState<Memory[]>([])
+  const [memories, setMemories] = useState<Memory[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null)
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
@@ -38,12 +37,8 @@ export default function MemoriesPage() {
     if (!selectedUserId) return
     
     try {
-      const [v1Data, v2Data] = await Promise.all([
-        api.getMemories({ user_id: selectedUserId, pipeline_version: 'v1' }),
-        api.getMemories({ user_id: selectedUserId, pipeline_version: 'v2' })
-      ])
-      setMemoriesV1(v1Data)
-      setMemoriesV2(v2Data)
+      const data = await api.getMemories({ user_id: selectedUserId, pipeline_version: 'v2' })
+      setMemories(data)
     } catch (error) {
       console.error('Failed to load memories:', error)
     } finally {
@@ -64,55 +59,45 @@ export default function MemoriesPage() {
     )
   }
 
-  const renderMemoryTable = (memories: Memory[], title: string, pipelineVersion: string) => (
-    <div style={{ flex: 1 }}>
-      <h3 style={{ marginBottom: '10px', padding: '10px', backgroundColor: pipelineVersion === 'v1' ? '#e3f2fd' : '#f3e5f5', borderRadius: '4px' }}>
-        {title} ({memories.length} воспоминаний)
-      </h3>
-      <table style={{ width: '100%' }}>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Summary</th>
-            <th>Importance</th>
-            <th>Created</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {memories.length === 0 ? (
-            <tr>
-              <td colSpan={5} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                Нет воспоминаний для этого пайплайна
-              </td>
-            </tr>
-          ) : (
-            memories.map(memory => (
-              <tr key={memory.id}>
-                <td>{memory.id}</td>
-                <td>{memory.summary}</td>
-                <td>{memory.importance_score.toFixed(2)}</td>
-                <td>{new Date(memory.created_at).toLocaleString()}</td>
-                <td>
-                  <button onClick={() => setSelectedMemory(memory)}>View</button>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
-
   return (
     <div>
-      <h1>Memory Inbox - Pipeline Comparison</h1>
+      <h1>Memory Inbox</h1>
       <div style={{ marginBottom: '15px', color: '#666' }}>
         Showing memories for User ID: <strong>{selectedUserId}</strong>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        {renderMemoryTable(memoriesV1, 'Pipeline v1 (Single-stage)', 'v1')}
-        {renderMemoryTable(memoriesV2, 'Pipeline v2 (Two-stage)', 'v2')}
+      <div style={{ flex: 1 }}>
+        <table style={{ width: '100%' }}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Summary</th>
+              <th>Importance</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {memories.length === 0 ? (
+              <tr>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                  No memories found
+                </td>
+              </tr>
+            ) : (
+              memories.map(memory => (
+                <tr key={memory.id}>
+                  <td>{memory.id}</td>
+                  <td>{memory.summary}</td>
+                  <td>{memory.importance_score.toFixed(2)}</td>
+                  <td>{new Date(memory.created_at).toLocaleString()}</td>
+                  <td>
+                    <button onClick={() => setSelectedMemory(memory)}>View</button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
       
       {selectedMemory && (

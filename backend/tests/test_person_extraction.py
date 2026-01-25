@@ -69,7 +69,7 @@ class PersonExtractionTester:
             planner_version="v1"
         )
         
-        # Получить извлеченных людей для v1 и v2, связанных с этим сообщением
+        # Получить извлеченных людей для v2, связанных с этим сообщением
         from app.models import MemoryPerson, Memory
         # Найти memories для этого сообщения
         memories = self.db.query(Memory).filter(
@@ -77,16 +77,8 @@ class PersonExtractionTester:
         ).all()
         memory_ids = [m.id for m in memories] if memories else []
         
-        # Получить людей через связи MemoryPerson
+        # Получить людей через связи MemoryPerson (только v2)
         if memory_ids:
-            person_ids_v1 = self.db.query(MemoryPerson.person_id).join(
-                Person
-            ).filter(
-                MemoryPerson.memory_id.in_(memory_ids),
-                Person.pipeline_version == "v1"
-            ).distinct().all()
-            person_ids_v1 = [p[0] for p in person_ids_v1]
-            
             person_ids_v2 = self.db.query(MemoryPerson.person_id).join(
                 Person
             ).filter(
@@ -95,18 +87,15 @@ class PersonExtractionTester:
             ).distinct().all()
             person_ids_v2 = [p[0] for p in person_ids_v2]
             
-            persons_v1 = self.db.query(Person).filter(Person.id.in_(person_ids_v1)).all() if person_ids_v1 else []
             persons_v2 = self.db.query(Person).filter(Person.id.in_(person_ids_v2)).all() if person_ids_v2 else []
         else:
-            # Если нет memories, попробуем найти людей по first_seen_memory_id или просто всех для этого пользователя
-            persons_v1 = self.db.query(Person).filter(
-                Person.user_id == self.test_user.id,
-                Person.pipeline_version == "v1"
-            ).all()
+            # Если нет memories, попробуем найти людей для этого пользователя (только v2)
             persons_v2 = self.db.query(Person).filter(
                 Person.user_id == self.test_user.id,
                 Person.pipeline_version == "v2"
             ).all()
+        
+        persons_v1 = []  # Pipeline v1 удален
         
         # Получить сообщение из БД
         message = self.db.query(Message).filter(
@@ -118,7 +107,6 @@ class PersonExtractionTester:
             "message_text": message_text,
             "expected_persons": message_data.get("expected_persons", []),
             "notes": message_data.get("notes", ""),
-            "persons_v1": [{"name": p.display_name, "type": p.type, "id": p.id} for p in persons_v1],
             "persons_v2": [{"name": p.display_name, "type": p.type, "id": p.id} for p in persons_v2],
             "message_db_id": message.id if message else None
         }
@@ -190,23 +178,16 @@ class PersonExtractionTester:
         for message_data in messages:
             result = await self.process_message(message_data)
             
-            # Сравнить результаты для v1 и v2
-            comparison_v1 = self.compare_persons(
-                result["expected_persons"],
-                result["persons_v1"],
-                "v1"
-            )
+            # Сравнить результаты для v2
             comparison_v2 = self.compare_persons(
                 result["expected_persons"],
                 result["persons_v2"],
                 "v2"
             )
             
-            result["comparison_v1"] = comparison_v1
             result["comparison_v2"] = comparison_v2
             self.results.append(result)
             
-            print(f"   ✓ v1: {len(comparison_v1['correct'])}/{len(result['expected_persons'])} правильных")
             print(f"   ✓ v2: {len(comparison_v2['correct'])}/{len(result['expected_persons'])} правильных")
     
     def generate_report(self) -> str:
@@ -225,23 +206,18 @@ class PersonExtractionTester:
         report_lines.append("## Общая статистика\n")
         
         total_expected = sum(len(r["expected_persons"]) for r in self.results)
-        total_found_v1 = sum(len(r["comparison_v1"]["correct"]) for r in self.results)
         total_found_v2 = sum(len(r["comparison_v2"]["correct"]) for r in self.results)
-        
-        avg_precision_v1 = sum(r["comparison_v1"]["precision"] for r in self.results) / len(self.results) if self.results else 0
-        avg_recall_v1 = sum(r["comparison_v1"]["recall"] for r in self.results) / len(self.results) if self.results else 0
-        avg_f1_v1 = sum(r["comparison_v1"]["f1_score"] for r in self.results) / len(self.results) if self.results else 0
         
         avg_precision_v2 = sum(r["comparison_v2"]["precision"] for r in self.results) / len(self.results) if self.results else 0
         avg_recall_v2 = sum(r["comparison_v2"]["recall"] for r in self.results) / len(self.results) if self.results else 0
         avg_f1_v2 = sum(r["comparison_v2"]["f1_score"] for r in self.results) / len(self.results) if self.results else 0
         
-        report_lines.append("| Метрика | Pipeline v1 | Pipeline v2 |\n")
-        report_lines.append("|---------|-------------|-------------|\n")
-        report_lines.append(f"| Найдено правильных | {total_found_v1}/{total_expected} | {total_found_v2}/{total_expected} |\n")
-        report_lines.append(f"| Precision (среднее) | {avg_precision_v1:.2%} | {avg_precision_v2:.2%} |\n")
-        report_lines.append(f"| Recall (среднее) | {avg_recall_v1:.2%} | {avg_recall_v2:.2%} |\n")
-        report_lines.append(f"| F1 Score (среднее) | {avg_f1_v1:.2%} | {avg_f1_v2:.2%} |\n\n")
+        report_lines.append("| Метрика | Pipeline v2 (Two-stage) |\n")
+        report_lines.append("|---------|------------------------|\n")
+        report_lines.append(f"| Найдено правильных | {total_found_v2}/{total_expected} |\n")
+        report_lines.append(f"| Precision (среднее) | {avg_precision_v2:.2%} |\n")
+        report_lines.append(f"| Recall (среднее) | {avg_recall_v2:.2%} |\n")
+        report_lines.append(f"| F1 Score (среднее) | {avg_f1_v2:.2%} |\n\n")
         
         # Детальный анализ по каждому сообщению
         report_lines.append("## Детальный анализ по сообщениям\n")
@@ -253,32 +229,8 @@ class PersonExtractionTester:
                 report_lines.append(f"**Примечание:** {result['notes']}\n")
             report_lines.append("\n")
             
-            # Pipeline v1
-            report_lines.append("#### Pipeline v1\n")
-            comp_v1 = result["comparison_v1"]
-            report_lines.append(f"- **Найдено:** {comp_v1['actual_count']} | **Ожидалось:** {comp_v1['expected_count']} | **Правильных:** {len(comp_v1['correct'])}\n")
-            report_lines.append(f"- **Precision:** {comp_v1['precision']:.2%} | **Recall:** {comp_v1['recall']:.2%} | **F1:** {comp_v1['f1_score']:.2%}\n\n")
-            
-            if comp_v1['correct']:
-                report_lines.append("✅ **Правильно найденные:**\n")
-                for p in comp_v1['correct']:
-                    report_lines.append(f"  - {p['name']} ({p['type']})\n")
-                report_lines.append("\n")
-            
-            if comp_v1['missed']:
-                report_lines.append("❌ **Пропущенные:**\n")
-                for p in comp_v1['missed']:
-                    report_lines.append(f"  - {p['name']} ({p['type']})\n")
-                report_lines.append("\n")
-            
-            if comp_v1['extra']:
-                report_lines.append("⚠️ **Лишние:**\n")
-                for p in comp_v1['extra']:
-                    report_lines.append(f"  - {p['name']} ({p['type']})\n")
-                report_lines.append("\n")
-            
             # Pipeline v2
-            report_lines.append("#### Pipeline v2\n")
+            report_lines.append("#### Pipeline v2 (Two-stage)\n")
             comp_v2 = result["comparison_v2"]
             report_lines.append(f"- **Найдено:** {comp_v2['actual_count']} | **Ожидалось:** {comp_v2['expected_count']} | **Правильных:** {len(comp_v2['correct'])}\n")
             report_lines.append(f"- **Precision:** {comp_v2['precision']:.2%} | **Recall:** {comp_v2['recall']:.2%} | **F1:** {comp_v2['f1_score']:.2%}\n\n")
@@ -308,13 +260,6 @@ class PersonExtractionTester:
                     report_lines.append(f"  - Ожидалось: {issue['expected']}, найдено: {issue['found']} ({issue['issue']})\n")
                 report_lines.append("\n")
         
-        # Сравнение Pipeline v1 vs v2
-        report_lines.append("## Сравнение Pipeline v1 vs v2\n\n")
-        report_lines.append("| Метрика | v1 | v2 | Лучше |\n")
-        report_lines.append("|---------|----|----|-------|\n")
-        report_lines.append(f"| Precision | {avg_precision_v1:.2%} | {avg_precision_v2:.2%} | {'v2' if avg_precision_v2 > avg_precision_v1 else 'v1'} |\n")
-        report_lines.append(f"| Recall | {avg_recall_v1:.2%} | {avg_recall_v2:.2%} | {'v2' if avg_recall_v2 > avg_recall_v1 else 'v1'} |\n")
-        report_lines.append(f"| F1 Score | {avg_f1_v1:.2%} | {avg_f1_v2:.2%} | {'v2' if avg_f1_v2 > avg_f1_v1 else 'v1'} |\n\n")
         
         # Предложения по улучшению
         report_lines.append("## Предложения по улучшению\n\n")
@@ -322,15 +267,9 @@ class PersonExtractionTester:
         suggestions = []
         
         # Анализ пропущенных людей
-        all_missed_v1 = []
         all_missed_v2 = []
         for r in self.results:
-            all_missed_v1.extend(r["comparison_v1"]["missed"])
             all_missed_v2.extend(r["comparison_v2"]["missed"])
-        
-        if all_missed_v1:
-            suggestions.append(f"- **Pipeline v1 пропустил {len(all_missed_v1)} человек:** {', '.join([p['name'] for p in all_missed_v1[:5]])}")
-            suggestions.append("  - Рекомендация: Улучшить промпт extractor v3 для более агрессивного поиска всех людей")
         
         if all_missed_v2:
             suggestions.append(f"- **Pipeline v2 пропустил {len(all_missed_v2)} человек:** {', '.join([p['name'] for p in all_missed_v2[:5]])}")
@@ -347,15 +286,9 @@ class PersonExtractionTester:
             suggestions.append("  - Рекомендация: Добавить более явные правила в промпт person_extractor про объединение вариантов")
         
         # Анализ лишних людей
-        all_extra_v1 = []
         all_extra_v2 = []
         for r in self.results:
-            all_extra_v1.extend(r["comparison_v1"]["extra"])
             all_extra_v2.extend(r["comparison_v2"]["extra"])
-        
-        if all_extra_v1:
-            suggestions.append(f"- **Pipeline v1 нашел {len(all_extra_v1)} лишних человек:** {', '.join([p['name'] for p in all_extra_v1[:5]])}")
-            suggestions.append("  - Рекомендация: Проверить, не извлекаются ли люди из message_history")
         
         if all_extra_v2:
             suggestions.append(f"- **Pipeline v2 нашел {len(all_extra_v2)} лишних человек:** {', '.join([p['name'] for p in all_extra_v2[:5]])}")
@@ -369,11 +302,11 @@ class PersonExtractionTester:
         
         report_lines.append("\n## Что работает хорошо\n\n")
         
-        if avg_recall_v1 > 0.8 or avg_recall_v2 > 0.8:
+        if avg_recall_v2 > 0.8:
             report_lines.append("- ✅ Высокий recall - большинство людей находится\n")
-        if avg_precision_v1 > 0.8 or avg_precision_v2 > 0.8:
+        if avg_precision_v2 > 0.8:
             report_lines.append("- ✅ Высокая precision - мало лишних людей\n")
-        if avg_f1_v1 > 0.8 or avg_f1_v2 > 0.8:
+        if avg_f1_v2 > 0.8:
             report_lines.append("- ✅ Хороший баланс между precision и recall\n")
         
         # Сохранить отчет

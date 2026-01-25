@@ -26,7 +26,7 @@ class ProcessingService:
         extractor_version: str = "v3",
         planner_version: str = "v1"
     ) -> Dict[str, Any]:
-        """Main pipeline: process user message through extractor and planner (parallel v1 and v2)"""
+        """Main pipeline: process user message through two-stage extractor (person_extractor → memory_extractor) and planner"""
         
         # 1. Create message record
         message = Message(
@@ -43,54 +43,27 @@ class ProcessingService:
             raise ValueError(f"Session {session_id} not found")
         context = self._build_extractor_context(session.user_id, session_id)
         
-        # 3. Prepare message history for v2
+        # 3. Prepare message history
         message_history = context.get("message_history", [])
         
-        # 4. Run BOTH pipelines in parallel
-        async def run_pipeline_v1():
-            """Pipeline v1: Current single-stage extractor"""
-            extractor_result = await self._run_extractor(
-                message_text, context, message.id, extractor_version
-            )
-            applied = self._apply_extractor_results(
-                session.user_id, session_id, message.id, extractor_result
-            )
-            return {
-                "extractor_result": extractor_result,
-                "applied": applied
-            }
-        
-        async def run_pipeline_v2():
-            """Pipeline v2: Two-stage (person_extractor → memory_extractor)"""
-            # Stage 1: Extract persons
-            person_result = await self._run_person_extractor_v2(
-                message_text, message_history, session_id, message.id
-            )
-            extracted_persons = self._apply_person_extractor_results_v2(
-                session.user_id, message.id, person_result
-            )
-            
-            # Stage 2: Extract memories using found persons
-            memory_result = await self._run_memory_extractor_v2(
-                message_text, extracted_persons, context, message.id
-            )
-            applied = self._apply_memory_extractor_results_v2(
-                session.user_id, session_id, message.id, memory_result, extracted_persons
-            )
-            
-            return {
-                "person_result": person_result,
-                "memory_result": memory_result,
-                "applied": applied
-            }
-        
-        # Run both pipelines in parallel
-        v1_result, v2_result = await asyncio.gather(
-            run_pipeline_v1(),
-            run_pipeline_v2()
+        # 4. Pipeline: Two-stage extraction (person_extractor → memory_extractor)
+        # Stage 1: Extract persons
+        person_result = await self._run_person_extractor_v2(
+            message_text, message_history, session_id, message.id
+        )
+        extracted_persons = self._apply_person_extractor_results_v2(
+            session.user_id, message.id, person_result
         )
         
-        # 5. Run planner (only once, using v1 context for now)
+        # Stage 2: Extract memories using found persons
+        memory_result = await self._run_memory_extractor_v2(
+            message_text, extracted_persons, context, message.id
+        )
+        applied = self._apply_memory_extractor_results_v2(
+            session.user_id, session_id, message.id, memory_result, extracted_persons
+        )
+        
+        # 5. Run planner
         planner_result = await self._run_planner(
             session.user_id, session_id, context, planner_version
         )
@@ -102,19 +75,11 @@ class ProcessingService:
         
         return {
             "message_id": message.id,
-            "v1": {
-                "extractor_run_id": v1_result["extractor_result"]["run_id"],
-                "memories_created": v1_result["applied"]["memories"],
-                "persons_created": v1_result["applied"]["persons"],
-                "chapters_created": v1_result["applied"]["chapters"]
-            },
-            "v2": {
-                "person_extractor_run_id": v2_result["person_result"]["run_id"],
-                "memory_extractor_run_id": v2_result["memory_result"]["run_id"],
-                "memories_created": v2_result["applied"]["memories"],
-                "persons_created": v2_result["applied"]["persons"],
-                "chapters_created": v2_result["applied"]["chapters"]
-            },
+            "person_extractor_run_id": person_result["run_id"],
+            "memory_extractor_run_id": memory_result["run_id"],
+            "memories_created": applied["memories"],
+            "persons_created": applied["persons"],
+            "chapters_created": applied["chapters"],
             "planner_run_id": planner_result["run_id"]
         }
 
