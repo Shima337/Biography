@@ -338,22 +338,20 @@ class ProcessingService:
                     self.db.flush()
             
             # Also check for variant names in database (fuzzy matching)
+            # НО только среди людей, извлеченных в текущем сообщении (уже в processed_names)
+            # Не проверяем всех людей пользователя, чтобы не брать людей из предыдущих сообщений
             if not existing_person:
-                all_persons = self.db.query(Person).filter(
-                    Person.user_id == user_id,
-                    Person.pipeline_version == "v2"
-                ).all()
-                
-                for db_person in all_persons:
-                    db_name_lower = db_person.display_name.lower()
+                # Проверяем только среди уже обработанных в этом сообщении
+                for processed_name, processed_person in processed_names:
                     name_lower = name.lower()
+                    processed_lower = processed_name.lower()
                     # Check if names are variants
-                    if name_lower in db_name_lower or db_name_lower in name_lower:
+                    if name_lower in processed_lower or processed_lower in name_lower:
                         # Prefer longer name
-                        if len(name) > len(db_person.display_name):
-                            db_person.display_name = name
+                        if len(name) > len(processed_person.display_name):
+                            processed_person.display_name = name
                             self.db.flush()
-                        existing_person = db_person
+                        existing_person = processed_person
                         break
             
             if existing_person:
@@ -570,10 +568,11 @@ class ProcessingService:
             
             # Create/update persons with improved matching
             for person_data in mem_data.persons:
-                # Check if person exists before creating
+                # Check if person exists before creating (только для v1)
                 existing_person = self.db.query(Person).filter(
                     Person.user_id == user_id,
-                    Person.display_name.ilike(person_data.name)
+                    Person.display_name.ilike(person_data.name),
+                    Person.pipeline_version == "v1"
                 ).first()
                 
                 person = self._find_or_create_person(
