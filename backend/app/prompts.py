@@ -146,15 +146,34 @@ CRITICAL: Extract persons ONLY from the CURRENT message (message_text). Do NOT e
 
 RULES FOR PERSON EXTRACTION:
 1. **Extract persons ONLY from the current message_text** - do not extract persons mentioned only in message_history
-2. **Extract ALL persons mentioned in the CURRENT message** - don't miss anyone, even if mentioned briefly
-3. **If text mentions both a role (папа, мама) AND a name in the same context, use the NAME as the person's name, not the role.**
+2. **CRITICAL - Extract ALL persons mentioned in the CURRENT message** - don't miss anyone, even if mentioned briefly. Read the message carefully and extract EVERY person mentioned:
+   - If someone is mentioned by name (Витя, Тася, Андрей) → extract them
+   - If someone is mentioned by role (папа, мама, дедушка, бабушка) → extract them
+   - If someone is mentioned by both role and name → extract the NAME
+   - Example: "В 1994-м году моего отца его звали Витя убили. Но к нам приехал жить дедушка с бабушкой. А бабушка Тася была врач" 
+     → Extract: Витя (father), дедушка (role), бабушка (role), Тася (name)
+3. **DO NOT extract generic roles or non-specific people** - only extract specific, named individuals or roles that refer to specific family members.
+   - DO extract: "папа", "мама", "дедушка", "бабушка" (specific family roles)
+   - DO NOT extract: "пацан", "мужчина", "женщина", "человек" (generic terms)
+4. **If text mentions both a role (папа, мама) AND a name in the same context, use the NAME as the person's name, not the role.**
    Example: "папа Иван" or "Иван, мой папа" → person name should be "Иван", type="family"
-4. **If only a role is mentioned in the CURRENT message** (e.g., "папа", "мама", "дедушка", "бабушка"), extract it as-is with the role as the name
-5. **CRITICAL - Variant names in same message**: If the same person is mentioned with different name variants in the CURRENT message (e.g., "бабушка Тася" and "Таиса Владимировна" or "Виктор" and "Витя"), extract them as ONE person with the FULL/MOST FORMAL name. 
+   Example: "Дедушку звали Вася или Василий Васильевич" → extract "Василий Васильевич" (full name), not "дедушка"
+5. **If only a role is mentioned in the CURRENT message** (e.g., "папа", "мама", "дедушка", "бабушка"), check known_persons first:
+   - If there's a matching person in known_persons (same type="family"), use that person's NAME instead of the role
+   - If no match found, extract it as-is with the role as the name
+6. **CRITICAL - Variant names in same message**: If the same person is mentioned with different name variants in the CURRENT message (e.g., "бабушка Тася" and "Таиса Владимировна" or "Виктор" and "Витя"), extract them as ONE person with the FULL/MOST FORMAL name. 
    Example: If message says "бабушка Тася, она же Таиса Владимировна" → extract ONE person with name "Таиса Владимировна" (full name), type="family"
    Example: If message says "Виктор (Витя)" or "Витя, он же Виктор" → extract ONE person with name "Виктор" (full name), type="family"
-6. **Use message_history ONLY for context**: If you see a role mentioned in the CURRENT message, check message_history to see if a name was mentioned earlier for this same person. If found, use the name instead of the role. But DO NOT extract the person if they are NOT mentioned in the current message.
-6. **Infer person type from context:**
+   Example: If message says "бабушка Тася" → extract "Тася" (if no full name mentioned), type="family"
+7. **Use message_history ONLY for context**: If you see a role mentioned in the CURRENT message, check message_history to see if a name was mentioned earlier for this same person. If found, use the name instead of the role. But DO NOT extract the person if they are NOT mentioned in the current message.
+8. **CRITICAL - Link roles to known_persons**: If you extract a role (дедушка, бабушка, папа, мама) in the CURRENT message, check "known_persons" to see if there's already a person with type="family" that matches this role. 
+   - If there's exactly ONE person of type "family" that could be this role (e.g., only one "family" person exists), use that person's NAME instead of the role.
+   - Example: If known_persons contains {"name": "Василий Васильевич", "type": "family"} and current message says "дедушка", extract "Василий Васильевич" (not "дедушка").
+   - Example: If known_persons contains {"name": "Тася", "type": "family"} and current message says "бабушка", extract "Тася" (not "бабушка").
+   - Example: If known_persons contains {"name": "Василий Васильевич", "type": "family"} and current message says "мой дедушка Василий Васильевич", extract "Василий Васильевич" (the name, not the role).
+   - This links roles to names across messages, preventing duplicate persons.
+   - IMPORTANT: Only link if the role appears in the CURRENT message - don't extract persons from known_persons if they're not mentioned in the current message.
+9. **Infer person type from context:**
    - family = родители, мама, папа, дедушка, бабушка, брат, сестра, дядя, тетя
    - friend = друг, подруга
    - colleague = коллега, начальник, сотрудник

@@ -12,11 +12,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Set, Tuple
 
+# Установить модель по умолчанию для тестов
+os.environ.setdefault("OPENAI_MODEL", "gpt-5.2")
+
 # Добавляем родительскую директорию в путь для импорта
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal, get_db
-from app.models import User, Session as DBSession, Person, Message
+from app.models import User, Session as DBSession, Person, Message, PromptRun, MemoryPerson, MemoryChapter, Memory, Chapter, QuestionQueue
 from app.service import ProcessingService
 
 
@@ -24,6 +27,8 @@ class PersonExtractionTester:
     def __init__(self):
         self.db = SessionLocal()
         self.service = ProcessingService(self.db)
+        # Проверить, какая модель используется
+        print(f"🔧 Используемая модель: {self.service.model}")
         self.test_user = None
         self.test_session = None
         self.results = []
@@ -320,7 +325,6 @@ class PersonExtractionTester:
         """Очистить тестовые данные"""
         if self.test_user:
             # Удалить связи MemoryPerson и MemoryChapter сначала
-            from app.models import MemoryPerson, MemoryChapter, Memory
             if self.test_session:
                 # Получить все memories для этой сессии
                 memories = self.db.query(Memory).filter(Memory.session_id == self.test_session.id).all()
@@ -337,10 +341,22 @@ class PersonExtractionTester:
                     # Удалить memories
                     self.db.query(Memory).filter(Memory.id.in_(memory_ids)).delete()
                 
+                # Удалить prompt_runs и questions перед удалением messages и сессии
+                # Удаляем по session_id, так как при удалении сессии возникает конфликт с внешним ключом
+                self.db.query(PromptRun).filter(PromptRun.session_id == self.test_session.id).delete()
+                self.db.query(QuestionQueue).filter(QuestionQueue.session_id == self.test_session.id).delete()
+                self.db.flush()
+                
                 # Удалить все сообщения
                 self.db.query(Message).filter(Message.session_id == self.test_session.id).delete()
+                self.db.flush()
+                
                 # Удалить сессию
                 self.db.delete(self.test_session)
+                self.db.flush()
+            
+            # Удалить chapters перед удалением user
+            self.db.query(Chapter).filter(Chapter.user_id == self.test_user.id).delete()
             
             # Теперь можно удалить людей (связи уже удалены)
             self.db.query(Person).filter(Person.user_id == self.test_user.id).delete()

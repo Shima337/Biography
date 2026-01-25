@@ -49,7 +49,7 @@ class ProcessingService:
         # 4. Pipeline: Two-stage extraction (person_extractor → memory_extractor)
         # Stage 1: Extract persons
         person_result = await self._run_person_extractor_v2(
-            message_text, message_history, session_id, message.id
+            message_text, message_history, session_id, message.id, session.user_id
         )
         extracted_persons = self._apply_person_extractor_results_v2(
             session.user_id, message.id, person_result
@@ -185,15 +185,26 @@ class ProcessingService:
         message_text: str,
         message_history: List[Dict[str, str]],
         session_id: int,
-        message_id: int
+        message_id: int,
+        user_id: int
     ) -> Dict[str, Any]:
         """Pipeline v2 - Stage 1: Extract persons from message only (no DB context)"""
         prompt_text = get_prompt("person_extractor", "v1")
         
-        # Минимальный контекст - только сообщение и история
+        # Получить известных людей для связывания ролей с именами
+        known_persons = self.db.query(Person).filter(
+            Person.user_id == user_id,
+            Person.pipeline_version == "v2"
+        ).limit(50).all()
+        
+        # Минимальный контекст - только сообщение, история и известные люди
         context = {
             "message_text": message_text[:2000] if len(message_text) > 2000 else message_text,
-            "message_history": message_history
+            "message_history": message_history,
+            "known_persons": [
+                {"name": p.display_name, "type": p.type}
+                for p in known_persons
+            ]
         }
         
         output_text, parsed_json, token_in, token_out, latency_ms = \
@@ -318,6 +329,55 @@ class ProcessingService:
                             self.db.flush()
                         existing_person = processed_person
                         break
+            
+            # CRITICAL: Link roles to existing persons
+            # Если извлечена роль (дедушка, бабушка, папа, мама) и нет точного совпадения,
+            # проверить, есть ли уже человек с таким типом family
+            if not existing_person and person_type == "family":
+                # Список ролей, которые могут быть связаны с существующими людьми
+                family_roles = ["дедушка", "бабушка", "папа", "мама", "отец", "мать", "брат", "сестра"]
+                name_lower = name.lower()
+                
+                # Проверить, является ли извлеченное имя ролью
+                if name_lower in family_roles:
+                    # Найти всех людей типа family для этого пользователя
+                    family_persons = self.db.query(Person).filter(
+                        Person.user_id == user_id,
+                        Person.type == "family",
+                        Person.pipeline_version == "v2"
+                    ).all()
+                    
+                    # Если есть только один человек типа family, связать роль с ним
+                    if len(family_persons) == 1:
+                        existing_person = family_persons[0]
+                        # Обновить имя, если текущее имя - это роль, а у существующего человека есть имя
+                        if len(existing_person.display_name) > len(name) and existing_person.display_name.lower() not in family_roles:
+                            # Оставить существующее имя (оно более полное)
+                            pass
+                        elif len(name) > len(existing_person.display_name) and name_lower not in family_roles:
+                            # Обновить на более полное имя
+                            existing_person.display_name = name
+                            self.db.flush()
+                    # Если несколько людей типа family, попробовать найти по контексту
+                    # (например, если в предыдущих сообщениях была связь роль-имя)
+                    elif len(family_persons) > 1:
+                        # Попробовать найти человека, у которого имя похоже на роль или наоборот
+                        # Например, если извлечена "бабушка", а есть "Тася" или "тасья" (с опечаткой)
+                        # Стратегия: если извлечена роль, найти человека, у которого имя НЕ является ролью
+                        # и который еще не был связан с другой ролью в этом сообщении
+                        candidates = [fp for fp in family_persons if fp.display_name.lower() not in family_roles]
+                        
+                        if len(candidates) == 1:
+                            # Если есть только один человек с именем (не ролью), связать роль с ним
+                            existing_person = candidates[0]
+                            # Оставить существующее имя (оно более информативное, чем роль)
+                        elif len(candidates) > 1:
+                            # Если несколько людей с именами, не связывать автоматически
+                            # (промпт должен был связать через known_persons)
+                            pass
+                        else:
+                            # Все люди - это роли, не связывать
+                            pass
             
             if existing_person:
                 person_map[existing_person.id] = existing_person
